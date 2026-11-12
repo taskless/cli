@@ -69,7 +69,8 @@ if (lock.packages["node_modules/" + name]?.version !== version) {
 const install = (root) => {
   const directory = path.join(root, "node_modules", name);
   fs.mkdirSync(directory, { recursive: true });
-  fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({ name, version, bin: { taskless: "./cli.cjs" } }));
+  const engines = process.env.FAKE_ENGINES ? { engines: { node: process.env.FAKE_ENGINES } } : {};
+  fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({ name, version, bin: { taskless: "./cli.cjs" }, ...engines }));
   fs.writeFileSync(path.join(directory, "cli.cjs"), process.env.FAKE_CLI_SOURCE);
 };
 if (process.env.FAKE_NPM_RACE) install(process.env.FAKE_NPM_RACE);
@@ -95,12 +96,19 @@ afterEach(async () => {
 });
 
 /** A lockfile pinning `packageName` at `version`, as `init` writes it. */
-function lockfileFor(packageName: string, version: string): string {
+function lockfileFor(
+  packageName: string,
+  version: string,
+  nodeEngine?: string
+): string {
   return JSON.stringify({
     lockfileVersion: 3,
     packages: {
       "": { dependencies: { [packageName]: version } },
-      [`node_modules/${packageName}`]: { version },
+      [`node_modules/${packageName}`]: {
+        version,
+        ...(nodeEngine === undefined ? {} : { engines: { node: nodeEngine } }),
+      },
     },
   });
 }
@@ -108,7 +116,8 @@ function lockfileFor(packageName: string, version: string): string {
 async function install(
   packageName: LauncherPackage,
   manifest: unknown,
-  lockedVersion?: string
+  lockedVersion?: string,
+  nodeEngine?: string
 ): Promise<string> {
   const bin = join(root, ".taskless", "bin");
   await mkdir(bin, { recursive: true });
@@ -121,7 +130,7 @@ async function install(
   if (lockedVersion !== undefined) {
     await writeFile(
       join(root, lockfilePath(packageName)),
-      lockfileFor(packageName, lockedVersion)
+      lockfileFor(packageName, lockedVersion, nodeEngine)
     );
   }
   const path = join(bin, launcherFileName(packageName));
@@ -208,6 +217,31 @@ fs.appendFileSync(process.env.FAKE_CMD_LOG, JSON.stringify(process.argv.slice(2)
 const npm = spawnSync(process.execPath, [process.env.FAKE_NPM_PATH, "ci"], { stdio: "inherit" });
 process.exit(npm.status ?? 1);
 `;
+
+/** A preload that makes the launcher see `version` as the running Node. */
+async function asNode(version: string): Promise<string> {
+  const preload = join(root, `as-node-${version}.mjs`);
+  await writeFile(
+    preload,
+    `Object.defineProperty(process.versions, "node", { value: ${JSON.stringify(version)} });\n`
+  );
+  return pathToFileURL(preload).href;
+}
+
+/** {@link launch}, with a preload from {@link asNode}. */
+function launchAs(preload: string, path: string, args: string[]) {
+  return spawnSync(process.execPath, ["--import", preload, path, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FAKE_NPM_LOG: npmLog,
+      FAKE_CLI_SOURCE: FAKE_CLI,
+      FAKE_ENGINES: ">=22.22.0",
+      PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+    },
+  });
+}
 
 describe.skipIf(process.platform === "win32")("project launcher", () => {
   it("installs the recorded version once, then runs it with every argument", async () => {
@@ -524,6 +558,53 @@ describe.skipIf(process.platform === "win32")("project launcher", () => {
       expect(await listing(CACHE())).toEqual([".gitignore"]);
     }
   );
+
+  describe("on a Node older than the package needs", () => {
+    it("names both versions and installs nothing", async () => {
+      const path = await install(
+        "@taskless/cli",
+        RELEASE,
+        "0.13.0",
+        ">=22.22.0"
+      );
+      const result = launchAs(await asNode("20.19.0"), path, ["init"]);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe(
+        "taskless: Taskless needs Node >=22.22.0, you have 20.19.0. " +
+          "Install a newer Node and run it again.\n"
+      );
+      expect(await npmCalls()).toEqual([]);
+    });
+
+    it("refuses a version it installed before, without running it", async () => {
+      // Installed under a newer Node; the same project is then run with an
+      // older one, and the lockfile says nothing about engines.
+      const path = await install("@taskless/cli", RELEASE, "0.13.0");
+      expect(
+        launch(path, [], { env: { FAKE_ENGINES: ">=22.22.0" } }).status
+      ).toBe(0);
+      const result = launchAs(await asNode("22.21.9"), path, ["check"]);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(
+        "Taskless needs Node >=22.22.0, you have 22.21.9."
+      );
+      expect(await npmCommands()).toEqual(["ci"]);
+    });
+
+    it("runs on a Node the range admits", async () => {
+      const path = await install(
+        "@taskless/cli",
+        RELEASE,
+        "0.13.0",
+        ">=22.22.0"
+      );
+      const result = launchAs(await asNode("22.22.0"), path, ["check"]);
+      expect(result.status).toBe(0);
+      expect(reported(result.stdout).argv).toEqual(["check"]);
+    });
+  });
 
   it("says npm is needed when it is not on PATH", async () => {
     const path = await install("@taskless/cli", RELEASE, "0.13.0");

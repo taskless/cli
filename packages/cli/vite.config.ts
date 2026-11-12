@@ -142,11 +142,16 @@ function assertSkillVersions(): Plugin {
   };
 }
 
-// `index` is the executable CLI; everything else is a library module consumers
-// import as `@taskless/cli/<name>`. Only the first is a program, so only it
-// gets a shebang and the executable bit — a `#!` line on a library entry would
-// be a syntax error to anything importing it as a module.
+// `index` is the executable CLI, and `bin` is the package's `bin`: a shim that
+// checks the running Node against `engines.node` and only then imports
+// `index` (see src/bin.ts). Everything else is a library module consumers
+// import as `@taskless/cli/<name>`. Only the first two are programs, so only
+// they get a shebang and the executable bit — a `#!` line on a library entry
+// would be a syntax error to anything importing it as a module. `index` keeps
+// both because `pnpm cli` and CI run it directly.
 const BIN_ENTRY = "index";
+const NODE_GUARD_ENTRY = "bin";
+const PROGRAM_ENTRIES = new Set([BIN_ENTRY, NODE_GUARD_ENTRY]);
 const PROMPTS_ENTRY = "prompts";
 const LAYOUT_ENTRY = "layout";
 const NODE_RUNTIMES_ENTRY = "node/runtimes";
@@ -155,6 +160,7 @@ const SCHEMAS_ENTRY = "schemas";
 /** Every entry this build emits, and the module each one is rooted at. */
 const ENTRY_SOURCES: Record<string, string> = {
   [BIN_ENTRY]: resolve(import.meta.dirname, "src/index.ts"),
+  [NODE_GUARD_ENTRY]: resolve(import.meta.dirname, "src/bin.ts"),
   [PROMPTS_ENTRY]: resolve(import.meta.dirname, "src/prompts/index.ts"),
   [LAYOUT_ENTRY]: resolve(import.meta.dirname, "src/layout/index.ts"),
   [SCHEMAS_ENTRY]: resolve(import.meta.dirname, "src/schemas/index.ts"),
@@ -323,7 +329,7 @@ function shebang(): Plugin {
   const isBinEntry = (
     chunk: Rollup.OutputAsset | Rollup.OutputChunk
   ): chunk is Rollup.OutputChunk =>
-    chunk.type === "chunk" && chunk.isEntry && chunk.name === BIN_ENTRY;
+    chunk.type === "chunk" && chunk.isEntry && PROGRAM_ENTRIES.has(chunk.name);
 
   return {
     name: "shebang",
@@ -502,6 +508,7 @@ export default defineConfig({
     __TASKLESS_CLI__: JSON.stringify(cliInvocation),
     __TASKLESS_CLI_NOTICE__: JSON.stringify(cliNotice),
     __TASKLESS_BUILD_TARGET__: JSON.stringify(buildTarget),
+    __TASKLESS_NODE_ENGINE__: JSON.stringify(pkg.engines?.node ?? null),
     __TASKLESS_INSTALL_LOCK__: JSON.stringify(
       installLockfile(buildTarget, cliVersion)
     ),

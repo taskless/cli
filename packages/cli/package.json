@@ -82,7 +82,7 @@
     "zod": "^4.3.6"
   },
   "bin": {
-    "taskless": "./dist/index.js"
+    "taskless": "./dist/bin.js"
   },
   "optionalDependencies": {
     "@ast-grep/cli-darwin-arm64": "0.51.1",

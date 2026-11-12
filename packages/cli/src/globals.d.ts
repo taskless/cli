@@ -6,3 +6,5 @@ declare const __TASKLESS_CLI_NOTICE__: string;
 declare const __TASKLESS_BUILD_TARGET__: "prod" | "self" | "nightly";
 /** The npm lockfile this build's launcher installs from; `null` for `self`. */
 declare const __TASKLESS_INSTALL_LOCK__: string | null;
+/** `engines.node` from `package.json`, which the `bin` shim checks; `null` if absent. */
+declare const __TASKLESS_NODE_ENGINE__: string | null;
