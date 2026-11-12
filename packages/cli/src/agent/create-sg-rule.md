@@ -269,7 +269,7 @@ An `all:` with one branch that sets a `kind` counts too. A `kind`
 inside `not`, `has` or another relation does not, because it describes
 a different node.
 
-To find the kind, run ast-grep with `--debug-query=ast` on a sample of
+To find the kind, run `%(TASKLESS_CLI)s ast <file>` on a sample of
 the code and take the named node the regex should match. Under
 `constraints`, that is the node the metavariable captures, which is
 not always the obvious one: the method `$M` captures in `$OBJ.$M()` is

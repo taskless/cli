@@ -8,7 +8,11 @@ import {
   REGEX_NEEDS_KIND,
   TASKLESS_REQUIRED_FIELDS,
 } from "../schemas/ast-grep-rule";
-import { pathPrefixed, schemaLayer } from "../schemas/layer";
+import {
+  pathPrefixed,
+  schemaLayer,
+  type IssueFormatter,
+} from "../schemas/layer";
 import {
   casePassed,
   describeCaseFailures,
@@ -139,19 +143,24 @@ function validateSchema(ruleData: unknown): LayerResult {
   // ast-grep's messages come from an upstream JSON Schema and are generic
   // ("expected string"), so the path is what makes them actionable.
   const result = astGrepRuleSchema.safeParse(ruleData);
-  const layer = schemaLayer(result, pathPrefixed);
   // The regex/kind pairing lives in the schema (see `astGrepRuleJsonSchema`),
   // and its issues say which constraint they are, so they are attributed
-  // here rather than re-derived from their wording.
+  // here rather than re-derived from their wording. Their message carries
+  // the `ast` pointer in `errors` and `violations` alike, so a violation's
+  // message is always one of the layer's errors.
+  const isRegexNeedsKind = (issue: Parameters<IssueFormatter>[0]): boolean =>
+    issue.code === "custom" && issue.params?.constraintId === REGEX_NEEDS_KIND;
+  const format: IssueFormatter = (issue) =>
+    isRegexNeedsKind(issue)
+      ? withKindPointer(pathPrefixed(issue))
+      : pathPrefixed(issue);
+  const layer = schemaLayer(result, format);
   const violations: RuleViolation[] = [];
   for (const issue of result.error?.issues ?? []) {
-    if (
-      issue.code === "custom" &&
-      issue.params?.constraintId === REGEX_NEEDS_KIND
-    ) {
+    if (isRegexNeedsKind(issue)) {
       violations.push({
         constraintId: REGEX_NEEDS_KIND,
-        message: withKindPointer(pathPrefixed(issue)),
+        message: format(issue),
       });
     }
   }
