@@ -97,8 +97,9 @@ Both commands answer in the same shape, one entry per rule:
   rule it names the silent traps the rule's shape matches, such as
   `$$$` beside a comma. Read it before `ok`, the same as `status`. The
   traps are described in
-  `%(RECIPE_FETCH)screate-sg-rule --section quirks` and
-  `%(RECIPE_FETCH)screate-sg-rule --section pattern-quirks`.
+  `%(RECIPE_FETCH)screate-sg-rule --section quirks`,
+  `%(RECIPE_FETCH)screate-sg-rule --section pattern-quirks` and
+  `%(RECIPE_FETCH)screate-sg-rule --section relational-quirks`.
 
 A green Vale `verify` also assumes Vale read every fixture. A fixture
 whose front matter Vale cannot parse is excluded from the run and

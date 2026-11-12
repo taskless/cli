@@ -539,7 +539,7 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
       "agent",
       "create-sg-rule",
       "--section",
-      "pattern-quirks",
+      "relational-quirks",
       "-d",
       cwd,
     ]);
@@ -554,7 +554,7 @@ describe("create-sg-rule warns about silently inert relational rules", () => {
       "agent",
       "create-sg-rule",
       "--section",
-      "pattern-quirks",
+      "relational-quirks",
       "-d",
       cwd,
     ]);

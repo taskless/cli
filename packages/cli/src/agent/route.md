@@ -16,28 +16,8 @@ answered together.
 - A working repository the agent can read.
 - No auth required to route. Login state is an *input* to the decision,
   not a requirement of making it.
-- **Another recipe may have sent you here.** When the recipe you came
-  from limits what you may ask the user, as `onboard` does, its limits
-  win over every question below: step 7's choice, the clarifying
-  question under "When two destinations both fit", and the failure
-  fallback's confirmation. Do what that recipe says to do instead.
-  Everywhere else, follow this recipe as written.
-
-  Those limits also cover the recipes this one sends you to, which ask
-  their own questions:
-  - `create-sg-rule`: confirms exclusions, asks whether to improve an
-    overlapping rule, and asks before escalating a failed rule.
-  - `create-legacy-rule`: asks which linter owns the rule when more than
-    one could, and before adding a plugin the repo does not have. Its
-    per-linter pages ask the same, and Ruff's asks before turning on
-    preview mode.
-  - `create-runtime-rule`: asks whether the user wants an account.
-  - `create-remote-rule`: asks about an overlapping rule, asks for the
-    cases, and confirms before spending a generation.
-  - `create-vale-rule` asks nothing.
-
-  A recipe that limits questions should say what to do at each of
-  these.
+- **Sent here by another recipe?** Its limits on asking win; see
+  [Limits on asking](#limits-on-asking).
 
 ## Steps
 
@@ -146,7 +126,7 @@ answered together.
    is not `[unknown]`, present both and let them pick: a local rule you
    write and verify now, or a generation that costs against their plan.
    Say which you would choose and why. If a recipe that limits questions
-   sent you here, do not offer the choice; that recipe says which to do.
+   sent you here, do not offer the choice.
 
    Not logged in, no GitHub owner, or not locally expressible are not
    choices. Do not pose them as one. If a local rule you committed to
@@ -432,3 +412,29 @@ will work.
 - `%(RECIPE_FETCH)screate-runtime-rule`: the runtime tier, logged out
 - `%(RECIPE_FETCH)screate-remote-rule`: generate via the service (login)
 - `%(RECIPE_FETCH)scheck`: run every engine over the repo
+
+<!-- on-demand -->
+## Limits on asking
+
+**Another recipe may have sent you here.** When the recipe you came
+from limits what you may ask the user, as `onboard` does, its limits
+win over every question this recipe asks: step 7's choice, the clarifying
+question under "When two destinations both fit", and the failure
+fallback's confirmation. Do what that recipe says to do instead.
+Everywhere else, follow this recipe as written.
+
+Those limits also cover the recipes this one sends you to, which ask
+their own questions:
+- `create-sg-rule`: confirms exclusions, asks whether to improve an
+  overlapping rule, and asks before escalating a failed rule.
+- `create-legacy-rule`: asks which linter owns the rule when more than
+  one could, and before adding a plugin the repo does not have. Its
+  per-linter pages ask the same, and Ruff's asks before turning on
+  preview mode.
+- `create-runtime-rule`: asks whether the user wants an account.
+- `create-remote-rule`: asks about an overlapping rule, asks for the
+  cases, and confirms before spending a generation.
+- `create-vale-rule` asks nothing.
+
+A recipe that limits questions should say what to do at each of
+these.
