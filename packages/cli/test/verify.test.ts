@@ -286,12 +286,13 @@ describe("verifyRule", () => {
 
     const result = await verifyRule(temporaryDirectory, "regex-no-kind");
 
-    expect(result.requirements.valid).toBe(false);
-    expect(result.requirements.errors).toContainEqual(
-      expect.stringContaining("regex")
+    // The pairing is part of the schema now, so Layer 1 reports it.
+    expect(result.schema.valid).toBe(false);
+    expect(result.schema.errors).toContainEqual(
+      expect.stringMatching(/^rule: Every "regex", at any depth/)
     );
-    expect(result.requirements.errors).toContainEqual(
-      expect.stringContaining("kind")
+    expect(result.schema.violations).toContainEqual(
+      expect.objectContaining({ constraintId: "sg-regex-needs-kind" })
     );
   });
 
