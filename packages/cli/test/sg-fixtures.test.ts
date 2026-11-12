@@ -199,6 +199,80 @@ describe("an sg fixture case is judged under the rule's scope", () => {
     expect(errors).toContain("pass case was never read");
     expect(errors).toContain("scope excluded every file in it");
     expect(errors).toContain("tests/pass/outside-scope/");
+    // An author writing this case usually means to show the exclusion, so
+    // the error says how to do that as well as how to move the file.
+    expect(errors).toContain("Move the fixture to such a path");
+    expect(errors).toContain(
+      "To show the scope excludes a file, keep that file in this case and " +
+        "add beside it a clean file at a path the scope admits"
+    );
+  });
+
+  it("does not suggest the exclusion pattern for a fail case the scope never read", async () => {
+    await sgRule(WORKFLOW_RULE, WORKFLOW_RULE_YAML, {
+      pass: { pinned: { ".github/workflows/ci.yml": PINNED_STEP } },
+      fail: { "outside-scope": { "ci.yml": PINNED_STEP } },
+    });
+
+    const result = await verifyRule(cwd, WORKFLOW_RULE);
+
+    expect(result.tests.valid).toBe(false);
+    const errors = result.tests.errors.join("\n");
+    expect(errors).toContain("fail case was never read");
+    expect(errors).toContain("Move the fixture to such a path");
+    expect(errors).not.toContain("To show the scope excludes a file");
+  });
+
+  it("passes a pass case that shows an exclusion beside a clean file the scope admits", async () => {
+    // The never-read check is per case, so one read file is enough. The
+    // offending files outside `files:` and inside `ignores:` then show the
+    // rule stays quiet on what its scope excludes.
+    await sgRule(
+      EVAL_ID,
+      `${EVAL_RULE}files:\n  - "src/**/*.ts"\nignores:\n  - "src/generated/**"\n`,
+      {
+        pass: {
+          "excluded-paths": {
+            "src/clean.ts": "foo(x);\n",
+            "src/generated/a.ts": "eval(x);\n",
+            "scripts/a.ts": "eval(x);\n",
+          },
+        },
+        fail: { "eval-call": { "src/a.ts": "eval(x);\n" } },
+      }
+    );
+
+    const result = await verifyRule(cwd, EVAL_ID);
+
+    expect(result.tests.errors).toEqual([]);
+    expect(result.tests.valid).toBe(true);
+    expect(result.tests.passed).toBe(2);
+    expect(
+      result.tests.findings.filter((finding) => finding.bucket === "pass")
+    ).toEqual([]);
+  });
+
+  it("fails each excluded file alone in a pass case as never read", async () => {
+    await sgRule(
+      EVAL_ID,
+      `${EVAL_RULE}files:\n  - "src/**/*.ts"\nignores:\n  - "src/generated/**"\n`,
+      {
+        pass: {
+          ignored: { "src/generated/a.ts": "eval(x);\n" },
+          unlisted: { "scripts/a.ts": "eval(x);\n" },
+        },
+        fail: { "eval-call": { "src/a.ts": "eval(x);\n" } },
+      }
+    );
+
+    const result = await verifyRule(cwd, EVAL_ID);
+
+    expect(result.tests.valid).toBe(false);
+    expect(result.tests.failed).toBe(2);
+    const errors = result.tests.errors.join("\n");
+    expect(errors).toContain("tests/pass/ignored/");
+    expect(errors).toContain("tests/pass/unlisted/");
+    expect(errors).toContain("scope excluded every file in it");
   });
 
   it("fails a case under a path the project's .gitignore covers", async () => {

@@ -508,6 +508,15 @@ engine, keeps its cases beside it in \`tests/\`:
   never read". Either the scope excluded every file in it (move the file to
   a path the scope admits), or the engine walked none of them (an ignored
   path, an empty file, or an extension the engine does not read).
+- **To show the scope excludes a path, put the excluded file beside a
+  clean file the scope admits, in one \`pass/\` case.** A case holding
+  only excluded files is never read, so it fails however correct the
+  scope is. Being read is decided per case, so the clean file makes the
+  case read, and the case passes when the rule stays quiet on both. For an
+  ast-grep rule with \`files: ["src/**/*.ts"]\` and
+  \`ignores: ["src/generated/**"]\`, the case
+  \`tests/pass/excluded-paths/\` holds a clean \`src/clean.ts\` beside an
+  offending \`src/generated/a.ts\` and an offending \`scripts/a.ts\`.
 - **"The rule's scope excluded it"** means a \`fail/\` case fires once its
   scope is removed, so the pattern is fine and the fixture's path is not.
   Move the fixture to a path the scope admits, or widen the scope. Do not

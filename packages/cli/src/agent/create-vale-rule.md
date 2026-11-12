@@ -1,4 +1,4 @@
-# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v21)
+# Topic: create-vale-rule     (CLI v%(CLI_VERSION)s / topic v22)
 
 %(ONE_COMMAND_PER_CALL)s
 

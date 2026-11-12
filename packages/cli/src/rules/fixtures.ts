@@ -309,11 +309,20 @@ export function describeCaseFailure(
   if (casePassed(outcome)) return undefined;
   const path = projectRelative(cwd, outcome.fixture.root);
   if (outcome.unread === "scope-excluded") {
-    return (
+    const message =
       `${outcome.fixture.bucket} case was never read, because the rule's ` +
       `scope excluded every file in it: ${path}/. No file sits at a path ` +
-      `admitted by ${scope ?? "the scope"}. Move the fixture to such a path.`
-    );
+      `admitted by ${scope ?? "the scope"}. Move the fixture to such a path.`;
+    // A pass case made only of excluded files is usually an attempt to show
+    // that the exclusion works. The never-read check is per case, so one clean
+    // file the scope admits makes the case read, and the excluded file beside
+    // it then shows the rule stays quiet on it.
+    return outcome.fixture.bucket === "pass"
+      ? `${message} To show the scope excludes a file, keep that file in ` +
+          `this case and add beside it a clean file at a path the scope ` +
+          `admits: the case is then read, and passes when the rule stays ` +
+          `quiet on both.`
+      : message;
   }
   if (outcome.unread === "not-walked") {
     return (

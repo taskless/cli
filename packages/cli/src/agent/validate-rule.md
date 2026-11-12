@@ -1,4 +1,4 @@
-# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: validate-rule     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 

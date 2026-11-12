@@ -1,4 +1,4 @@
-# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v16)
+# Topic: create-sg-rule     (CLI v%(CLI_VERSION)s / topic v17)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -136,7 +136,10 @@ whole rule.
    Each case file takes the extension ast-grep parses as the rule's
    `language:` (`.ts` for `TypeScript`, `.tsx` for `Tsx`, `.yml` for
    `Yaml`), and sits at a path the rule's `files:` admits and its
-   `ignores:` does not.
+   `ignores:` does not. To show that `files:` or `ignores:` excludes a
+   path, put the offending file at that path in a `pass/` case beside a
+   clean file the scope admits, as the layout above describes. A `pass/`
+   case holding only the excluded file is never read and fails.
 
    %(FIXTURE_SOURCES)s
 
@@ -175,12 +178,13 @@ whole rule.
    - `ok: true` → go to step 8.
    - `ok: false` → read `errors` and fix. Repeat up to 3 times.
 
-| what `errors` says                   | fix                                             |
-|--------------------------------------|-------------------------------------------------|
-| the YAML doesn't match the schema    | check field types against the upstream schema   |
-| a Taskless-required field is missing | add `id`/`language`/`severity`/`message`/`rule` |
-| a case didn't behave as expected     | fix the rule pattern OR the test case           |
-| the rule's scope excluded a case     | move the fixture to a path `files:` admits      |
+| what `errors` says                              | fix                                             |
+|-------------------------------------------------|-------------------------------------------------|
+| the YAML doesn't match the schema               | check field types against the upstream schema   |
+| a Taskless-required field is missing            | add `id`/`language`/`severity`/`message`/`rule` |
+| a case didn't behave as expected                | fix the rule pattern OR the test case           |
+| the rule's scope excluded a case                | move the fixture to a path `files:` admits      |
+| a pass case showing an exclusion was never read | add a clean file the scope admits to that case  |
 
    Every `regex`, at any depth, needs a `kind` beside it, or
    validation fails. That includes `constraints`, `utils`, and every
