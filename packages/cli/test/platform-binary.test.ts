@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AST_GREP_BINARY } from "../src/rules/ast-grep-binary";
 import {
@@ -19,6 +19,36 @@ import {
   type PlatformBinarySpec,
 } from "../src/rules/platform-binary";
 import { VALE_BINARY } from "../src/rules/vale/binary";
+
+/**
+ * Where the resolver believes its own module lives, when a test relocates it.
+ *
+ * `resolvePlatformBinary` finds its `node_modules/.bin` tier relative to its
+ * own file (`fileURLToPath(import.meta.url)`). Under vitest that file is
+ * `src/rules/platform-binary.ts`, so planting a binary at the real location
+ * meant creating `src/node_modules` inside the source tree, where a parallel
+ * test walking `src/` could list it and then hit ENOENT once it was removed
+ * (taskless/cli#694). Relocating the module path instead keeps the resolver's
+ * own `..`/`node_modules/.bin` computation under test while every file the
+ * test creates lives in a temp directory.
+ *
+ * Every other call passes straight through to the real `fileURLToPath`.
+ */
+const relocation = vi.hoisted(() => ({
+  modulePath: undefined as string | undefined,
+}));
+
+vi.mock("node:url", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:url")>();
+  const fileURLToPath: typeof actual.fileURLToPath = (url, options) => {
+    const path = actual.fileURLToPath(url, options);
+    return relocation.modulePath !== undefined &&
+      /[/\\]rules[/\\]platform-binary\.ts$/.test(path)
+      ? relocation.modulePath
+      : path;
+  };
+  return { ...actual, default: { ...actual, fileURLToPath }, fileURLToPath };
+});
 
 /**
  * The two engines' packages are named differently, and the difference is not
@@ -207,18 +237,14 @@ describe("candidate order", () => {
   onUnix(
     "reports node_modules/.bin as the source when that tier answers",
     () => {
-      // Mirrors the computation `resolvePlatformBinary` uses internally
-      // (relative to the compiled module's own directory) — this is the exact
-      // location that tier searches, not a stand-in for it.
-      const localBin = join(
-        import.meta.dirname,
-        "..",
-        "src",
-        "node_modules",
-        ".bin"
-      );
+      // Pretend the resolver's module sits at `<tmp>/rules/platform-binary.ts`,
+      // the same depth as `src/rules/platform-binary.ts`, so the tier it
+      // computes is `<tmp>/node_modules/.bin`. Nothing is written under `src/`.
+      const root = mkdtempSync(join(tmpdir(), "candidate-order-bin-"));
+      workspaces.push(root);
+      relocation.modulePath = join(root, "rules", "platform-binary.ts");
+      const localBin = join(root, "node_modules", ".bin");
       mkdirSync(localBin, { recursive: true });
-      workspaces.push(join(import.meta.dirname, "..", "src", "node_modules"));
       const binaryPath = join(localBin, "sg");
       writeFileSync(binaryPath, "#!/bin/sh\necho 'fake-tool 1.0.0'\n");
       chmodSync(binaryPath, 0o755);
@@ -233,6 +259,7 @@ describe("candidate order", () => {
         expect(resolution.source).toBe("node_modules/.bin");
       } finally {
         process.env.PATH = originalPath;
+        relocation.modulePath = undefined;
       }
     }
   );
