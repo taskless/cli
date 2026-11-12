@@ -244,6 +244,10 @@ describe("onboard recipe renders host-tool state", () => {
 
     expect(rendered).toContain("**Recent MR review comments**: `glab` is");
     expect(rendered).toContain("glab api --paginate");
+    // Filter on the merge date itself; `updated_after` would lean on the
+    // assumption that a merge always bumps `updated_at`.
+    expect(rendered).toContain("state=merged&merged_after=START");
+    expect(rendered).not.toContain("updated_after");
     expect(rendered.replaceAll(/\s+/g, " ")).toContain(
       "never the most recent N"
     );
