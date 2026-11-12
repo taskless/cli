@@ -402,8 +402,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v12", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v12\)/m);
+  it("is topic v13", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v13\)/m);
   });
 
   // v10 (#554): a worktree holds only commits, and `init` commits nothing, so
