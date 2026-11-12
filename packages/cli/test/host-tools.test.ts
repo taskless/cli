@@ -197,6 +197,75 @@ describe("onboard recipe renders host-tool state", () => {
     expect(rendered).not.toContain("`gh` is available");
   });
 
+  // taskless/cli#674: busy-repository runs hit the 1000-result cap, wrote
+  // their own pagination, and sampled the newest PRs, which in one repository
+  // covered a single week of a 90-day window.
+  it("covers a busy window without the agent writing its own pagination", () => {
+    const rendered = onboardWith({ present: true, applicable: true });
+    const flat = rendered.replaceAll(/\s+/g, " ");
+
+    expect(flat).toContain("stop at 1000 results");
+    expect(flat).toContain("write no pagination loop of your own");
+    expect(rendered).toContain(
+      'gh api "search/issues?q=repo:{owner}/{repo}+is:pr+is:merged+merged:>=START&per_page=1" --jq .total_count'
+    );
+    expect(rendered).toContain(
+      'gh pr list --state merged --search "merged:START..END" --limit 1000'
+    );
+    expect(rendered).toContain(
+      'gh api --paginate "repos/{owner}/{repo}/pulls/comments?since=START&per_page=100"'
+    );
+    expect(flat).toContain("never the most recent N");
+    expect(flat).toContain("Counts from a sample are a floor");
+  });
+
+  it("gives the busy-window guidance when gh was not measured", () => {
+    const rendered = getRecipe("onboard") ?? "";
+
+    expect(rendered).toContain("pulls/comments?since=START");
+    expect(rendered.replaceAll(/\s+/g, " ")).toContain(
+      "never the most recent N"
+    );
+  });
+
+  it("gives merge requests the whole-window rule through glab", () => {
+    const rendered =
+      getRecipe("onboard", {
+        hostTools: [
+          {
+            name: "gh",
+            present: true,
+            applicable: false,
+            reason: "this repository has no GitHub origin",
+          },
+          { name: "glab", present: true, applicable: true },
+        ],
+      }) ?? "";
+
+    expect(rendered).toContain("**Recent MR review comments**: `glab` is");
+    expect(rendered).toContain("glab api --paginate");
+    expect(rendered.replaceAll(/\s+/g, " ")).toContain(
+      "never the most recent N"
+    );
+    // GitHub's cap and endpoints have nothing to say to a GitLab repository.
+    expect(rendered).not.toContain("pulls/comments");
+  });
+
+  it("keeps the busy-window guidance inside the review-comment item", () => {
+    const rendered = onboardWith({ present: true, applicable: true });
+    const start = rendered.indexOf("**Recent PR review comments**");
+    const end = rendered.indexOf("   - **Commit history**");
+    const item = rendered.slice(start, end);
+
+    expect(item).toContain("pulls/comments?since=START");
+    // Every continuation line sits at the item's content column or deeper,
+    // so the guidance renders as part of the bullet rather than ending it.
+    for (const line of item.split("\n").slice(1)) {
+      if (line === "") continue;
+      expect(line).toMatch(/^ {5}/);
+    }
+  });
+
   it("omits PR review comments with a reason when gh is not on PATH", () => {
     const rendered = onboardWith({ present: false, applicable: true });
 

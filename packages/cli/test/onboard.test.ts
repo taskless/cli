@@ -402,8 +402,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v11", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v11\)/m);
+  it("is topic v12", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v12\)/m);
   });
 
   // v10 (#554): a worktree holds only commits, and `init` commits nothing, so
@@ -431,6 +431,18 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(scan).toContain("Bot and author comments count too");
     expect(scan).toContain("never by matching keywords");
     expect(scan).not.toMatch(/\bfixed\b/);
+  });
+
+  // taskless/cli#674: mining grouped themes more broadly than the rules
+  // finally written, so runs re-read every comment to count them.
+  it("records each counted comment under its candidate, at the rule's scope", () => {
+    const scan = step("Scan with high-signal filtering").replaceAll(
+      /\s+/g,
+      " "
+    );
+    expect(scan).toContain("Count while you mine, not afterwards");
+    expect(scan).toContain("scoped to the rule you expect to write");
+    expect(scan).toContain("recount from the list");
   });
 
   it("mines commit history for recurring fixes, but never counts it as surfaced", () => {

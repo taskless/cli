@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v11)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v12)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -149,6 +149,12 @@ making the case for running them in CI.
    comment by reading it, never by matching keywords. Evidence from
    commit history chooses candidates; it never counts toward these
    numbers, which count review comments alone.
+
+   Count while you mine, not afterwards. As each comment joins a
+   candidate, note its pull request and comment under that candidate,
+   scoped to the rule you expect to write rather than a broader theme,
+   so the counts come from that list instead of a second read. When
+   `route` narrows a candidate, recount from the list.
 
 8. **Write the rules.** For every candidate whose destination is
    `legacy`, `sg`, or `vale`, follow the `%(TASKLESS_CLI)s agent route`
