@@ -1,21 +1,30 @@
 import type { CheckResult } from "../types/check";
 import type { CheckSummary } from "../schemas/check";
 
-/** `2 errors, 1 warning`, in severity order, naming only the ones present. */
-function describeSeverities(results: CheckResult[]): string {
-  const counts: Record<string, number> = {};
-  for (const result of results) {
-    counts[result.severity] = (counts[result.severity] ?? 0) + 1;
-  }
+function plural(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
 
+/** `2 errors, 1 warning` from counts, in severity order, naming only nonzero. */
+function describeCounts(counts: CheckSummary["severities"]): string {
   const parts: string[] = [];
   for (const severity of ["error", "warning", "info", "hint"] as const) {
     const count = counts[severity];
-    if (count !== undefined) {
-      parts.push(`${String(count)} ${severity}${count === 1 ? "" : "s"}`);
-    }
+    if (count > 0) parts.push(plural(count, severity));
   }
   return parts.join(", ");
+}
+
+/** `2 errors, 1 warning` for a list of findings; see `describeCounts`. */
+function describeSeverities(results: CheckResult[]): string {
+  const counts: CheckSummary["severities"] = {
+    error: 0,
+    warning: 0,
+    info: 0,
+    hint: 0,
+  };
+  for (const result of results) counts[result.severity] += 1;
+  return describeCounts(counts);
 }
 
 /**
@@ -57,27 +66,11 @@ export function formatText(
 
   const uniqueFiles = new Set(results.map((r) => r.file)).size;
   lines.push(
-    `${String(results.length)} issue${results.length === 1 ? "" : "s"} (${describeSeverities(results)}) across ${String(uniqueFiles)} file${uniqueFiles === 1 ? "" : "s"}`
+    `${plural(results.length, "issue")} (${describeSeverities(results)}) across ${plural(uniqueFiles, "file")}`
   );
   if (hiddenLine !== undefined) lines.push(hiddenLine);
 
   return lines.join("\n");
-}
-
-/** `2 errors, 1 warning` from counts, in severity order, naming only nonzero. */
-function describeCounts(counts: CheckSummary["severities"]): string {
-  const parts: string[] = [];
-  for (const severity of ["error", "warning", "info", "hint"] as const) {
-    const count = counts[severity];
-    if (count > 0) {
-      parts.push(`${String(count)} ${severity}${count === 1 ? "" : "s"}`);
-    }
-  }
-  return parts.join(", ");
-}
-
-function plural(count: number, noun: string): string {
-  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /**
