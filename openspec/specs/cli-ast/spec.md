@@ -49,7 +49,7 @@ Without `--lang`, the command SHALL parse the file as the language the bundled a
 
 ### Requirement: The ast command reports what it cannot dump
 
-The command SHALL fail with the standard `--json` error envelope and exit code 1, and SHALL NOT print a partial tree, when the file is missing, empty or a directory, when `--lang` names no ast-grep language, when the file is too large to hand to ast-grep on this platform (each `INVALID_INPUT`), when no ast-grep binary is found (`ENGINE_UNAVAILABLE`), and when ast-grep prints no tree it can parse (`SCAN_FAILED`).
+The command SHALL fail with the standard `--json` error envelope and exit code 1, and SHALL NOT print a partial tree, when the file is missing, empty, a directory or not valid UTF-8, when `--lang` names no ast-grep language, when the file is too large to hand to ast-grep on this platform (each `INVALID_INPUT`), when no ast-grep binary is found (`ENGINE_UNAVAILABLE`), and when ast-grep prints no tree it can parse (`SCAN_FAILED`).
 
 #### Scenario: A file too large for the command line
 

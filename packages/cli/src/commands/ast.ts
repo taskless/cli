@@ -35,9 +35,18 @@ class AstCommandError extends Error {
   }
 }
 
+/**
+ * Decoding is strict: a lenient `"utf8"` read would turn every invalid byte
+ * into U+FFFD, and the dump would then show a tree of text the file does not
+ * hold, with nothing to say so. `ignoreBOM` keeps a byte-order mark in the
+ * string, so byte columns still count from the file's first byte.
+ */
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
 async function readSource(path: string, given: string): Promise<string> {
+  let bytes: Buffer;
   try {
-    return await readFile(path, "utf8");
+    bytes = await readFile(path);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     throw new AstCommandError(
@@ -46,6 +55,14 @@ async function readSource(path: string, given: string): Promise<string> {
         : code === "EISDIR"
           ? `${given} is a directory. \`ast\` takes one file.`
           : `Could not read ${given}: ${(error as Error).message}`,
+      "INVALID_INPUT"
+    );
+  }
+  try {
+    return strictUtf8.decode(bytes);
+  } catch {
+    throw new AstCommandError(
+      `${given} is not valid UTF-8. ast-grep parses UTF-8 text, so re-encode the file (or a copy) as UTF-8 first.`,
       "INVALID_INPUT"
     );
   }

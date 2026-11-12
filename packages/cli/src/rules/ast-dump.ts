@@ -132,7 +132,9 @@ function runSg(binary: string, argv: string[], cwd: string): Promise<SgRun> {
  * would be a mapping `check` does not use.
  *
  * Undefined when ast-grep does not recognize the extension: such a file is not
- * reported at all.
+ * reported at all. Ignore rules are not a second cause: ast-grep applies
+ * `.gitignore`, hidden-file and similar filters only to what it finds while
+ * walking a directory, never to a path it is given, and the probe gives it one.
  */
 export async function detectAstLanguage(
   binary: string,
