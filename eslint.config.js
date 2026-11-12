@@ -51,6 +51,12 @@ export default tseslint.config(
       // worth doing, but it is a separate change — the rules that would apply
       // are not these ones.
       ".agents/skills/*/scripts/",
+      // Third-party skills that dotagents installs (see `agents.toml`). They
+      // are gitignored and replaced on every install, so there is nothing here
+      // to fix. Most are prose, but `security-audit` ships zero-dependency
+      // CommonJS validators at its top level, which the type-aware rules
+      // cannot parse and which would otherwise fail `pnpm lint` locally.
+      ".agents/skills/security-audit/",
       // Taskless rule fixtures. A rule's `tests/` holds inputs written to be
       // flagged, and a rule about source comments needs `.ts` fixtures
       // specifically — Vale picks its comments-only tier by extension. They are
