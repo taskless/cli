@@ -1,5 +1,4 @@
 import { z } from "zod";
-import * as core from "zod/v4/core";
 
 import upstreamSchema from "../generated/ast-grep-rule-schema.json";
 import type { RuleConstraintId } from "../rules/constraints";
@@ -61,7 +60,7 @@ function isObject(value: unknown): value is JsonObject {
  *
  * zod cannot consume either keyword (`z.fromJSONSchema` throws on both), so
  * {@link astGrepRuleSchema} is built from the upstream schema and mirrors this
- * with a refinement. {@link findRegexWithoutKind} walks the data against this
+ * with a check. {@link findRegexWithoutKind} walks the data against this
  * same schema, so the two report the same paths by construction.
  */
 function withRegexNeedsKind(schema: JsonObject): JsonObject {
@@ -232,49 +231,44 @@ export function findRegexWithoutKind(ruleFile: unknown): RegexWithoutKind[] {
   return [...found.values()];
 }
 
+/** ast-grep's rule schema as zod reads it, without the regex/kind pairing. */
+const upstreamRuleSchema = z
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+  .fromJSONSchema(upstreamSchema as any);
+
 /**
- * The zod half of the regex/kind pairing: one issue per path
+ * Zod schema for ast-grep rule validation: the official ast-grep JSON Schema
+ * via `z.fromJSONSchema()`, plus the regex/kind pairing
+ * {@link astGrepRuleJsonSchema} adds. zod cannot read the `if`/`then` that
+ * states it there, so the pairing is checked here by hand.
+ *
+ * The two run side by side rather than as `upstream.superRefine(pairing)`,
+ * because zod skips a refinement once the schema it is attached to has
+ * failed: a rule with a mistyped `severity` would hide its regex problem
+ * until the next round, which is the round this check exists to save. So the
+ * outer schema accepts any input, and its one check reports the upstream
+ * schema's issues first, then one issue per path
  * {@link findRegexWithoutKind} reports, each carrying `params.constraintId`
  * so `validate` can attribute it to `sg-regex-needs-kind` without matching on
  * wording.
- *
- * Built with `when: () => true` because a plain `.superRefine()` is skipped
- * whenever the base schema already failed: a rule with a mistyped `severity`
- * would hide its regex problem until the next round, which is the round this
- * check exists to save.
- *
- * `core._check` is a leading-underscore export of `zod/v4/core`, so zod does
- * not promise it across minor releases. It is used on purpose: the public
- * `z.check()` (zod 4.3.6) builds a check with no params, so it cannot carry
- * `when`. If a zod bump reshapes `_check`, the "still reports the pairing
- * when another field fails the schema" case in
- * `test/ast-grep-rule-schema.test.ts` fails rather than letting this go quiet.
  */
-const regexNeedsKindCheck = core._check<unknown>(
-  (payload) => {
-    for (const { path, message } of findRegexWithoutKind(payload.value)) {
-      payload.issues.push({
-        code: "custom",
-        path,
-        message,
-        input: payload.value,
-        params: { constraintId: REGEX_NEEDS_KIND },
-      });
-    }
-  },
-  { when: () => true }
-);
-
-/**
- * Zod schema for ast-grep rule validation, derived from the official
- * ast-grep JSON Schema via `z.fromJSONSchema()`, plus the check that mirrors
- * the regex/kind pairing {@link astGrepRuleJsonSchema} adds. zod cannot read
- * the `if`/`then` that states it there, so the upstream schema is the base.
- */
-export const astGrepRuleSchema = z
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
-  .fromJSONSchema(upstreamSchema as any)
-  .check(regexNeedsKindCheck);
+export const astGrepRuleSchema = z.unknown().superRefine((value, context) => {
+  const upstream = upstreamRuleSchema.safeParse(value);
+  for (const issue of upstream.error?.issues ?? []) {
+    // `continue: false` keeps zod's default for a schema's own issues, which
+    // `addIssue` would otherwise flip to `true`.
+    context.addIssue({ ...issue, continue: false });
+  }
+  for (const { path, message } of findRegexWithoutKind(value)) {
+    context.addIssue({
+      code: "custom",
+      path,
+      message,
+      continue: false,
+      params: { constraintId: REGEX_NEEDS_KIND },
+    });
+  }
+});
 
 /**
  * Taskless-specific required fields, beyond what ast-grep requires.
