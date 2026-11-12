@@ -291,8 +291,12 @@ describe("verifyRule", () => {
     expect(result.schema.errors).toContainEqual(
       expect.stringMatching(/^rule: Every "regex", at any depth/)
     );
-    expect(result.schema.violations).toContainEqual(
-      expect.objectContaining({ constraintId: "sg-regex-needs-kind" })
+    const regexViolation = result.schema.violations?.find(
+      (violation) => violation.constraintId === "sg-regex-needs-kind"
+    );
+    // Points at `taskless ast` for the kind to add.
+    expect(regexViolation?.message).toMatch(
+      / ast <file>` on a file in the rule's language/
     );
   });
 
