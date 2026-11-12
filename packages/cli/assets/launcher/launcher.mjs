@@ -79,6 +79,48 @@ function versionFor(install, name) {
     : undefined;
 }
 
+// `engines.node` as a lower bound, `>=MAJOR[.MINOR[.PATCH]]`.
+const MINIMUM_NODE = /^\s*>=\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*$/;
+
+/**
+ * Stop with a plain message when this Node is older than `engines` allows.
+ * The CLI cannot say so itself: on an older Node it fails while loading,
+ * with an error that does not mention the version. A range other than a
+ * lower bound is left for npm and the CLI to judge.
+ */
+function requireNode(engines) {
+  const required = engines?.node;
+  if (typeof required !== "string") return;
+  const match = MINIMUM_NODE.exec(required);
+  const running = /^(\d+)\.(\d+)\.(\d+)/.exec(process.versions.node);
+  if (match === null || running === null) return;
+  for (let index = 1; index <= 3; index++) {
+    const need = Number(match[index] ?? 0);
+    const have = Number(running[index]);
+    if (have > need) return;
+    if (have < need) {
+      fail(
+        `Taskless needs Node ${required.trim()}, you have ` +
+          `${process.versions.node}. Install a newer Node and run it again.`
+      );
+    }
+  }
+}
+
+/** The installed package's `engines` under `directory`, if it can be read. */
+function installedEngines(directory) {
+  try {
+    return JSON.parse(
+      readFileSync(
+        join(directory, "node_modules", PACKAGE, "package.json"),
+        "utf8"
+      )
+    ).engines;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The installed package's bin script under `directory`, if it is there. */
 function entryPoint(directory) {
   const packageDirectory = join(directory, "node_modules", PACKAGE);
@@ -161,17 +203,19 @@ function installVersion(version, target) {
   }
   let locked;
   try {
-    locked = JSON.parse(lock)?.packages?.[`node_modules/${PACKAGE}`]?.version;
+    locked = JSON.parse(lock)?.packages?.[`node_modules/${PACKAGE}`];
   } catch {
     locked = undefined;
   }
-  if (locked !== version) {
+  if (locked?.version !== version) {
     fail(
       `${lockfile} does not pin ${PACKAGE}@${version}, the version ` +
         `${manifest} records. Run \`${INSTALLER}\` from the directory that ` +
         `contains .taskless/ to rewrite both.`
     );
   }
+  // Before installing: a version this Node cannot run is not worth fetching.
+  requireNode(locked.engines);
 
   mkdirSync(cache, { recursive: true });
   const ignore = join(cache, ".gitignore");
@@ -300,6 +344,7 @@ if (entry === undefined) {
   entry = installVersion(version, target);
   prune(install);
 }
+requireNode(installedEngines(target));
 
 const result = spawnSync(process.execPath, [entry, ...process.argv.slice(2)], {
   stdio: "inherit",

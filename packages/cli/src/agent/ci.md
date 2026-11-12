@@ -1,4 +1,4 @@
-# Topic: ci     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: ci     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -193,10 +193,11 @@ Simplifications:
 ### 6. Translate to other CIs
 
 The six universal steps:
-1. Make Node available to the job (v22 or later; match the user's
-   existing CI version when it is newer): the CI system's Node setup
-   step, or a Node container image such as `node:22`. The Taskless job
-   needs nothing else from the project's own toolchain, and no
+1. Make Node available to the job (22.22 or later, which `22` resolves
+   to; match the user's existing CI version when it is newer, and raise
+   one that is older, since Taskless stops on an older Node): the CI
+   system's Node setup step, or a Node container image such as
+   `node:22`. The Taskless job needs nothing else from the project's own toolchain, and no
    `package.json`, so in a Python, Go, or other non-Node repository it
    still runs as its own job with its own image.
 2. Fetch with full depth (or enough to reach the target branch).

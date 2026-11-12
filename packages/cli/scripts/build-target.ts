@@ -57,7 +57,7 @@ const REMOVED_TARGET = "dev";
  * `nightly` IS THE EXCEPTION: it emits to `dist`, the same directory as prod,
  * and a local `build:nightly` therefore OVERWRITES a prod build in place. That
  * is not an oversight — the nightly tarball is packed from `packages/cli` with
- * `files: ["dist"]` and `bin: ./dist/index.js`, so `dist` is the only directory
+ * `files: ["dist"]` and `bin: ./dist/bin.js`, so `dist` is the only directory
  * npm would carry. Run `pnpm --filter @taskless/cli build` afterwards to get an
  * ordinary `dist` back; `pnpm cli` runs whatever is there.
  */
