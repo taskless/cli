@@ -1,4 +1,4 @@
-# Topic: route     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: route     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -16,6 +16,12 @@ answered together.
 - A working repository the agent can read.
 - No auth required to route. Login state is an *input* to the decision,
   not a requirement of making it.
+- **Another recipe may have sent you here.** When the recipe you came
+  from limits what you may ask the user, as `onboard` does, its limits
+  win over every question below: step 7's choice, the clarifying
+  question under "When two destinations both fit", and the failure
+  fallback's confirmation. Do what that recipe says to do instead.
+  Everywhere else, follow this recipe as written.
 
 ## Steps
 
@@ -268,7 +274,8 @@ answered together.
    rule is expressible locally, the user is logged in, **and** `ghOwner`
    is not `[unknown]`, present both and let them pick: a local rule you
    write and verify now, or a generation that costs against their plan.
-   Say which you would choose and why.
+   Say which you would choose and why. If a recipe that limits questions
+   sent you here, do not offer the choice; that recipe says which to do.
 
    Not logged in, no GitHub owner, or not locally expressible are not
    choices. Do not pose them as one.
@@ -284,9 +291,10 @@ answered together.
 - **A rule that seems to need two engines is usually two rules.** Split
   it and route each half, rather than forcing one engine to cover
   evidence it cannot see.
-- **You genuinely cannot tell** → ask the user a clarifying question.
-  Uncertainty is a reason to ask; it is never a reason to spend a
-  generation.
+- **You genuinely cannot tell** → ask the user a clarifying question,
+  unless a recipe that limits questions sent you here; then that recipe
+  decides. Uncertainty is a reason to ask; it is never a reason to spend
+  a generation.
 
 ## Failure fallback (try-verify-escalate)
 

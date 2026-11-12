@@ -489,6 +489,25 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(write).toContain("the report asks for that estimate");
   });
 
+  // #675: route and the recipes it sends to still ask in places; onboarding
+  // must say what to do instead at each one, so the two read as one answer.
+  it("answers each of route's questions itself instead of asking", () => {
+    const write = step("Write the rules").replaceAll(/\s+/g, " ");
+    expect(write).toContain("During onboarding you ask none of them");
+    expect(write).toContain(
+      "**`route` offers a local rule or a generation** (its step 7): write the local rule."
+    );
+    expect(write).toContain(
+      "**You cannot tell which destination fits** (`route`'s clarifying question): skip the candidate."
+    );
+    expect(write).toContain(
+      "(`route`'s failure fallback): do not offer generation."
+    );
+    expect(write).toContain(
+      "**A destination recipe asks you to confirm something**"
+    );
+  });
+
   it("limits clarifying questions to a refused report", () => {
     const clarify = step("Clarify only when stuck");
     expect(clarify).toContain("fewer than three working Taskless");
