@@ -61,6 +61,28 @@ describe("route's questions defer to the recipe that sent the agent", () => {
     );
   });
 
+  // A limiting recipe that reads only this precondition must learn that the
+  // destination recipes ask too, or it misses their confirmations.
+  it("names the questions each destination recipe asks on its own", () => {
+    expect(flat).toContain(
+      "Those limits also cover the recipes this one sends you to, which ask their own questions:"
+    );
+    expect(flat).toContain(
+      "`create-sg-rule`: confirms exclusions, asks whether to improve an overlapping rule, and asks before escalating a failed rule."
+    );
+    expect(flat).toContain(
+      "`create-legacy-rule`: asks which linter owns the rule when more than one could, and before adding a plugin the repo does not have."
+    );
+    expect(flat).toContain("Ruff's asks before turning on preview mode.");
+    expect(flat).toContain(
+      "`create-runtime-rule`: asks whether the user wants an account."
+    );
+    expect(flat).toContain(
+      "`create-remote-rule`: asks about an overlapping rule, asks for the cases, and confirms before spending a generation."
+    );
+    expect(flat).toContain("`create-vale-rule` asks nothing.");
+  });
+
   it("qualifies step 7's choice, the clarifying question, and the fallback in place", () => {
     expect(flat).toContain(
       "If a recipe that limits questions sent you here, do not offer the choice"

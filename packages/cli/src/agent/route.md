@@ -23,6 +23,22 @@ answered together.
   fallback's confirmation. Do what that recipe says to do instead.
   Everywhere else, follow this recipe as written.
 
+  Those limits also cover the recipes this one sends you to, which ask
+  their own questions:
+  - `create-sg-rule`: confirms exclusions, asks whether to improve an
+    overlapping rule, and asks before escalating a failed rule.
+  - `create-legacy-rule`: asks which linter owns the rule when more than
+    one could, and before adding a plugin the repo does not have. Its
+    per-linter pages ask the same, and Ruff's asks before turning on
+    preview mode.
+  - `create-runtime-rule`: asks whether the user wants an account.
+  - `create-remote-rule`: asks about an overlapping rule, asks for the
+    cases, and confirms before spending a generation.
+  - `create-vale-rule` asks nothing.
+
+  A recipe that limits questions should say what to do at each of
+  these.
+
 ## Steps
 
 1. **Read the repository.** %(DETECT_EVIDENCE)s the configured linters, languages, and the repo's own
