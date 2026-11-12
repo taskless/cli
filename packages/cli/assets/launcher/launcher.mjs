@@ -80,6 +80,10 @@ function versionFor(install, name) {
 }
 
 // `engines.node` as a lower bound, `>=MAJOR[.MINOR[.PATCH]]`.
+//
+// This and `requireNode` mirror `nodeVersionProblem` in the CLI's
+// `src/node-version.ts`, message text included. This script ships alone into
+// a project and cannot import it, so a change to either belongs in both.
 const MINIMUM_NODE = /^\s*>=\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*$/;
 
 /**

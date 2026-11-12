@@ -9,7 +9,8 @@
  *
  * The project launcher (`assets/launcher/launcher.mjs`) carries its own copy
  * of the same comparison and prints the same message. It is a standalone
- * script written into a project, so it cannot import this one.
+ * script written into a project, so it cannot import this one. A change to
+ * the accepted range syntax or the message belongs in both.
  */
 
 /** `>=MAJOR[.MINOR[.PATCH]]`, the only `engines.node` shape this package uses. */
