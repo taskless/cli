@@ -61,12 +61,15 @@ describe("route's questions defer to the recipe that sent the agent", () => {
     );
   });
 
-  it("qualifies step 7's choice and the clarifying question in place", () => {
+  it("qualifies step 7's choice, the clarifying question, and the fallback in place", () => {
     expect(flat).toContain(
       "If a recipe that limits questions sent you here, do not offer the choice"
     );
     expect(flat).toContain(
       "ask the user a clarifying question, unless a recipe that limits questions sent you here; then that recipe decides."
+    );
+    expect(flat).toContain(
+      "If a recipe that limits questions sent you here, do not ask for that confirmation; do what that recipe says instead."
     );
   });
 });
