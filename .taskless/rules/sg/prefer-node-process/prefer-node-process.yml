@@ -44,6 +44,7 @@ rule:
             kind: program
             not:
               has:
+                stopBy: neighbor
                 kind: import_statement
                 has:
                   stopBy: end
@@ -64,6 +65,7 @@ rule:
                   has:
                     field: parameters
                     has:
+                      stopBy: neighbor
                       any:
                         - kind: required_parameter
                         - kind: optional_parameter
@@ -89,11 +91,13 @@ rule:
                     - kind: statement_block
                     - kind: program
                   has:
+                    stopBy: neighbor
                     any:
                       - any:
                           - kind: lexical_declaration
                           - kind: variable_declaration
                         has:
+                          stopBy: neighbor
                           kind: variable_declarator
                           has:
                             field: name
@@ -106,6 +110,7 @@ rule:
                             - kind: lexical_declaration
                             - kind: variable_declaration
                           has:
+                            stopBy: neighbor
                             kind: variable_declarator
                             has:
                               field: name

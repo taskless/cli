@@ -478,6 +478,7 @@ The failure it prevents is not a local one: Vale reports this as `E201: has inva
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `$$$` next to a comma                        | a pattern places a `$$$` metavariable directly beside a `,`, and that pattern is not an object pattern declaring `strictness: ast`                                                                                                                                                       |
 | a sibling relation that stops at punctuation | a `follows` or `precedes` relation declares no `stopBy`                                                                                                                                                                                                                                  |
+| a descent relation that looks one level      | a `has` or `inside` relation declares neither `stopBy` nor `field`                                                                                                                                                                                                                       |
 | an awaited generic call hides its callee     | a rule whose `language:` is `TypeScript` or `Tsx` keys a relation on the callee (`field: function`) with a `regex` anywhere beneath it, covering both a bare function (`identifier`) and a method (`member_expression`), and no alternative in that relation names an `await_expression` |
 
 A trap notice SHALL NOT fail the rule and SHALL NOT affect the exit code. Each shape has legitimate uses (a sibling relation that is meant to stop at the neighbour, a pattern meant to require at least one argument), so `validate` cannot know which one the author meant. A trap the author faces only as a notice is one they can decide about, and a trap that fails the rule is one they cannot write past.
@@ -502,6 +503,12 @@ A trap that ast-grep itself refuses (a keyword or Markdown inline construct name
 - **WHEN** an `sg` rule declares `follows: { kind: number }` with no `stopBy`
 - **THEN** the rule SHALL carry a notice naming `follows` and `stopBy: end`
 - **AND** the same relation declaring `stopBy: end` SHALL carry none
+
+#### Scenario: A descent relation without stopBy draws a notice
+
+- **WHEN** an `sg` rule declares `not: { inside: { kind: try_statement } }` or `has: { kind: identifier }` with no `stopBy`
+- **THEN** the rule SHALL carry a notice naming the relation, saying it checks only the direct parent or direct children, and naming `stopBy: end`
+- **AND** the same relation declaring any `stopBy`, or naming a `field`, SHALL carry none
 
 #### Scenario: A callee regex under TypeScript draws a notice
 

@@ -72,7 +72,7 @@ describe("$$$ beside a comma", () => {
     const notices = findSgTraps(
       typescript({
         kind: "expression_statement",
-        has: { pattern: "foo($A, $$$)" },
+        has: { pattern: "foo($A, $$$)", stopBy: "end" },
       })
     );
     expect(notices).toHaveLength(1);
@@ -104,6 +104,80 @@ describe("a sibling relation without stopBy", () => {
         typescript({
           kind: "number",
           follows: { kind: "number", stopBy: "end" },
+        })
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("a descent relation without stopBy", () => {
+  it("notices inside with no stopBy", () => {
+    const notices = findSgTraps(
+      typescript({
+        kind: "call_expression",
+        not: { inside: { kind: "try_statement" } },
+      })
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("rule.not.inside");
+    expect(notices[0]).toContain("direct parent");
+    expect(notices[0]).toContain("the `not` around it excludes nothing");
+    expect(notices[0]).toContain("stopBy: end");
+  });
+
+  it("notices has with no stopBy", () => {
+    const notices = findSgTraps(
+      typescript({
+        kind: "template_string",
+        has: { kind: "template_substitution" },
+      })
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("rule.has");
+    expect(notices[0]).toContain("direct children");
+    expect(notices[0]).not.toContain("`not`");
+    expect(notices[0]).toContain("stopBy: end");
+  });
+
+  it("finds one nested under constraints and utils", () => {
+    const notices = findSgTraps({
+      ...typescript({ pattern: "$F()" }),
+      constraints: { F: { kind: "identifier", inside: { kind: "program" } } },
+      utils: { u: { kind: "identifier", has: { kind: "identifier" } } },
+    });
+    expect(notices).toHaveLength(2);
+    expect(notices[0]).toContain("constraints.F.inside");
+    expect(notices[1]).toContain("utils.u.has");
+  });
+
+  it("is silent once stopBy is declared, end or neighbor", () => {
+    expect(
+      findSgTraps(
+        typescript({
+          kind: "call_expression",
+          not: { inside: { kind: "try_statement", stopBy: "end" } },
+          has: { kind: "arguments", stopBy: "neighbor" },
+        })
+      )
+    ).toEqual([]);
+  });
+
+  // A field pins one parent-child link, which is what the default reads, so
+  // the author has already said how far to look.
+  it("is silent when the relation names a field", () => {
+    expect(
+      findSgTraps(
+        typescript({
+          kind: "variable_declarator",
+          has: { field: "name", kind: "identifier" },
+        })
+      )
+    ).toEqual([]);
+    expect(
+      findSgTraps(
+        typescript({
+          kind: "statement_block",
+          inside: { field: "body", kind: "function_declaration" },
         })
       )
     ).toEqual([]);
@@ -161,7 +235,7 @@ describe("an awaited generic call hides its callee", () => {
               { kind: "identifier", regex: "^rpc$" },
               {
                 kind: "await_expression",
-                has: { kind: "identifier", regex: "^rpc$" },
+                has: { kind: "identifier", regex: "^rpc$", stopBy: "neighbor" },
               },
             ],
           },
@@ -190,6 +264,7 @@ describe("an awaited generic call hides its callee", () => {
                 kind: "await_expression",
                 has: {
                   kind: "member_expression",
+                  stopBy: "neighbor",
                   has: {
                     field: "property",
                     kind: "property_identifier",

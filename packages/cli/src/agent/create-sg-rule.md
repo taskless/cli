@@ -106,7 +106,8 @@ whole rule.
    - any `kind:` you read off a `--debug-query=cst` dump,
    - a rule that keys on a call's callee, if callers write
      `await f<T>(...)`,
-   - a `follows` or `precedes`, or a `not` that reuses a metavariable.
+   - a `has`, `inside`, `follows` or `precedes` without `stopBy`, or
+     a `not` that reuses a metavariable.
 
 6. **Write the tests.** Write at least two cases in each bucket under
    `.taskless/rules/sg/<id>/tests/`. These paths are the same ones the
@@ -217,6 +218,7 @@ sometimes what the author meant. Read it and decide.
 | a keyword named as a `kind`                    | config error            | yes                         |
 | a callee rule over `await f<T>(...)`           | silent                  | as a notice                 |
 | `follows` or `precedes` without `stopBy: end`  | silent                  | as a notice                 |
+| `has` or `inside` without `stopBy`             | silent                  | as a notice                 |
 | a `not` containing a bare metavariable         | silent                  | no                          |
 
 ### Every `regex`, at any depth, needs a `kind`
@@ -408,7 +410,7 @@ rule:
       - kind: identifier
         regex: "^rpc$"
       - kind: await_expression
-        has: { kind: identifier, regex: "^rpc$" }
+        has: { kind: identifier, regex: "^rpc$", stopBy: neighbor }
 ```
 
 The inner branch has to repeat whatever the plain branch matches. For
@@ -422,6 +424,7 @@ both branches test that instead:
       - kind: await_expression
         has:
           kind: member_expression
+          stopBy: neighbor
           has: { field: property, kind: property_identifier, regex: "^rpc$" }
 ```
 
@@ -445,6 +448,31 @@ rule:
 matches nothing, and the same rule with `stopBy: end` inside `follows`
 matches. If a sibling relation reports zero on input you believe should
 match, add `stopBy: end` before doubting the rest of the rule.
+
+### `has` and `inside` look one level unless given `stopBy`
+
+Both default to `stopBy: neighbor`: `has` checks only the node's
+direct children, and `inside` only its direct parent. The shape that
+bites is an exclusion. Measured on TypeScript, with
+
+```
+rule:
+  pattern: fetch($$$)
+  not:
+    inside: { kind: try_statement }
+```
+
+a `fetch()` inside a `try` block is still reported, because its parent
+is an `expression_statement`, and the `try_statement` sits several
+levels further up. Add `stopBy: end` inside `inside` and the exclusion
+works. `has` fails the same way downward: in `foo(x)` the `x` is a
+child of `arguments`, so `has: { kind: identifier, regex: "^x$" }` on
+the call does not find it.
+
+`validate` notices each `has` and `inside` that declares no `stopBy`.
+A relation that names a `field` is left alone, since a field already
+picks one direct child. If the direct child or parent is what you
+mean, say so with `stopBy: neighbor` and the notice goes away.
 
 ### A `not` containing a bare metavariable excludes everything
 
