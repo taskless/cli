@@ -242,6 +242,13 @@ export function findRegexWithoutKind(ruleFile: unknown): RegexWithoutKind[] {
  * whenever the base schema already failed: a rule with a mistyped `severity`
  * would hide its regex problem until the next round, which is the round this
  * check exists to save.
+ *
+ * `core._check` is a leading-underscore export of `zod/v4/core`, so zod does
+ * not promise it across minor releases. It is used on purpose: the public
+ * `z.check()` (zod 4.3.6) builds a check with no params, so it cannot carry
+ * `when`. If a zod bump reshapes `_check`, the "still reports the pairing
+ * when another field fails the schema" case in
+ * `test/ast-grep-rule-schema.test.ts` fails rather than letting this go quiet.
  */
 const regexNeedsKindCheck = core._check<unknown>(
   (payload) => {
