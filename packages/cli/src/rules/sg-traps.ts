@@ -33,6 +33,7 @@ export function findSgTraps(rule: Record<string, unknown>): string[] {
       notices.push(
         ...separatorTraps(node, path),
         ...siblingTraps(node, path),
+        ...descentTraps(node, path),
         ...(typescriptFamily ? calleeTraps(node, path) : [])
       );
     });
@@ -121,6 +122,50 @@ function siblingTraps(node: Record<string, unknown>, path: string): string[] {
     if ("stopBy" in value) continue;
     notices.push(
       `${path}.${relation} declares no \`stopBy\`, so it checks only the immediately adjacent sibling, and punctuation such as \`,\` counts as one: in \`[10, 10]\` the second \`10\` does not follow a number. Add \`stopBy: end\` inside \`${relation}\` unless stopping at the neighbour is what you mean.`
+    );
+  }
+  return notices;
+}
+
+/** How far `has` and `inside` look under the default `stopBy: neighbor`. */
+const DESCENT = {
+  has: {
+    reach: "only the direct children",
+    missed: "a match nested any deeper is missed",
+    scope: "whole subtree",
+  },
+  inside: {
+    reach: "only the direct parent",
+    missed: "an ancestor any further up is missed",
+    scope: "every ancestor",
+  },
+} as const;
+
+/**
+ * `has` or `inside` with no `stopBy`. The default `neighbor` checks only the
+ * direct children (`has`) or the direct parent (`inside`), so an exclusion such
+ * as `not: { inside: { kind: ... } }` stops excluding anything nested deeper,
+ * and a fixture written from the same assumption passes.
+ *
+ * A relation that names a `field` is left alone: the field already pins one
+ * particular parent-child link, which is exactly what the default looks at.
+ */
+function descentTraps(node: Record<string, unknown>, path: string): string[] {
+  const notices: string[] = [];
+  for (const relation of ["has", "inside"] as const) {
+    const value = node[relation];
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      continue;
+    }
+    if ("stopBy" in value || "field" in value) continue;
+    const { reach, missed, scope } = DESCENT[relation];
+    // Under a negation the miss turns into a match: the exclusion quietly
+    // stops excluding, which is the form authors report hitting.
+    const negated = /(^|\.)not(\.|$)/.test(path)
+      ? `, so the \`not\` around it excludes nothing nested deeper`
+      : "";
+    notices.push(
+      `${path}.${relation} declares no \`stopBy\`, so it checks ${reach}: ${missed}${negated}. Add \`stopBy: end\` inside \`${relation}\` to search the ${scope}, or \`stopBy: neighbor\` if stopping there is what you mean.`
     );
   }
   return notices;

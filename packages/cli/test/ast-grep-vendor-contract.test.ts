@@ -389,6 +389,21 @@ const grammarMatches = (
     .filter((line) => line !== "")
     .map((line) => (JSON.parse(line) as { text: string }).text);
 
+/** A `fetch()` excluded when inside a `try`, with `stopBy` text appended. */
+const tryExclusion = (stopBy: string): string =>
+  [
+    "  pattern: fetch($$$)",
+    "  not:",
+    `    inside: { kind: try_statement${stopBy} }`,
+  ].join("\n");
+
+/** A call that has an `x` identifier, with `stopBy` text appended. */
+const hasX = (stopBy: string): string =>
+  [
+    "  kind: call_expression",
+    `  has: { kind: identifier, regex: "^x$"${stopBy} }`,
+  ].join("\n");
+
 /** The call each finding matched, in file order — i.e. the arities accepted. */
 const arityMatches = (body: string): string[] =>
   grammarMatches(body, aritySource["src/a.ts"]);
@@ -1163,7 +1178,7 @@ withSg("ast-grep vendor contract", () => {
             "      - kind: identifier",
             '        regex: "^rpc$"',
             "      - kind: await_expression",
-            '        has: { kind: identifier, regex: "^rpc$" }',
+            '        has: { kind: identifier, regex: "^rpc$", stopBy: neighbor }',
           ].join("\n"),
           awaitSource
         )
@@ -1187,6 +1202,7 @@ withSg("ast-grep vendor contract", () => {
             "      - kind: await_expression",
             "        has:",
             "          kind: member_expression",
+            "          stopBy: neighbor",
             `          ${property}`,
           ].join("\n"),
           [
@@ -1292,6 +1308,40 @@ withSg("ast-grep vendor contract", () => {
       expect(grammarMatches(asIdentifier ?? "", callSource)).toEqual([]);
       expect(grammarMatches(asProperty ?? "", callSource)).toEqual([
         "client.rpc()",
+      ]);
+    });
+  });
+
+  /**
+   * `has` and `inside` default to `stopBy: neighbor`: one level down, one
+   * level up. The create-sg-rule Quirks entry quotes both cases, and
+   * `findSgTraps` notices the shape because ast-grep runs it without a word.
+   */
+  describe("has and inside look one level by default", () => {
+    const trySource = [
+      "async function f() {",
+      "  try {",
+      '    await fetch("a");',
+      "  } catch {}",
+      '  fetch("b");',
+      "}",
+      "",
+    ].join("\n");
+
+    it("an inside exclusion misses an ancestor two levels up", () => {
+      expect(grammarMatches(tryExclusion(""), trySource)).toEqual([
+        'fetch("a")',
+        'fetch("b")',
+      ]);
+      expect(grammarMatches(tryExclusion(", stopBy: end"), trySource)).toEqual([
+        'fetch("b")',
+      ]);
+    });
+
+    it("has misses a grandchild", () => {
+      expect(grammarMatches(hasX(""), "foo(x);\n")).toEqual([]);
+      expect(grammarMatches(hasX(", stopBy: end"), "foo(x);\n")).toEqual([
+        "foo(x)",
       ]);
     });
   });
