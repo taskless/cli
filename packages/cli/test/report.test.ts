@@ -825,6 +825,21 @@ describe("scanText", () => {
   });
 });
 
+/** One rule's facts, carrying `extra` beside its review counts. */
+function ruleWithEvidence(
+  id: string,
+  reviewComments: number,
+  extra: Record<string, unknown>
+) {
+  return {
+    id,
+    title: `Rule ${id}`,
+    explain: "Holding it keeps review on design instead of style.",
+    surfaced: { prs: reviewComments, reviewComments },
+    ...extra,
+  };
+}
+
 function summaryOf(draft: ReportDraft): string {
   return renderSummary({
     report: assembleReport(draft, factsFor(["a", "b", "c"])),
@@ -848,7 +863,9 @@ describe("renderSummary", () => {
       record: "2026-10-13_142200.json",
       invocation: "npx @taskless/cli",
     });
-    expect(summary).toContain("Rule a (Taskless ast-grep rule)");
+    expect(summary).toContain(
+      "Rule a (Taskless ast-grep rule): 9 times in reviews\n"
+    );
     expect(summary).toContain("https://tskl.es/r/abc");
     expect(summary).toContain("can be deleted after review");
     expect(summary).not.toContain("delete/");
@@ -870,6 +887,46 @@ describe("renderSummary", () => {
       "Raised in review from 2026-07-14 to 2026-10-11: 27 comments across 18 pull requests."
     );
     expect(summary).not.toMatch(/month/i);
+  });
+
+  it("gives each rule its evidence totals, larger first", () => {
+    const report = assembleReport(
+      draftOf(["a", "b", "c", "d"].map((id) => localRule(id))),
+      factsFor([], {
+        rules: [
+          ruleWithEvidence("a", 2, {
+            sources: ["reviews", "commits", "docs"],
+            evidence: { commits: 4, docs: 1 },
+          }),
+          ruleWithEvidence("b", 0, {
+            sources: ["agent-files", "tests"],
+            evidence: { "agent-files": 2, tests: 3 },
+          }),
+          ruleWithEvidence("c", 0, { sources: ["conventions"] }),
+          ruleWithEvidence("d", 1, {
+            sources: ["reviews", "agent-files"],
+            evidence: { "agent-files": 1 },
+          }),
+        ],
+      })
+    );
+    const summary = renderSummary({
+      report,
+      url: "https://tskl.es/r/abc",
+      expiresAt: "2026-11-12T00:00:00Z",
+      record: "2026-10-13_142200.json",
+      invocation: "npx @taskless/cli",
+    });
+    expect(summary).toContain(
+      "Rule a (Taskless ast-grep rule): 6 times in reviews, 1 time in conventions\n"
+    );
+    expect(summary).toContain(
+      "Rule b (Taskless ast-grep rule): 5 times in conventions\n"
+    );
+    expect(summary).toContain("Rule c (Taskless ast-grep rule)\n");
+    expect(summary).toContain(
+      "Rule d (Taskless ast-grep rule): 1 time in reviews, 1 time in conventions\n"
+    );
   });
 
   it("states no problem count it does not have", () => {

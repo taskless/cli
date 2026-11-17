@@ -1,3 +1,4 @@
+import { groupTotals, type SourceGroup } from "./evidence";
 import type { ReportRule, ReportV1 } from "./types";
 
 /**
@@ -14,6 +15,10 @@ import type { ReportRule, ReportV1 } from "./types";
  * formula here is a number that drifts from the page without anyone noticing.
  * The summary states the two kinds of count it has, labelled apart: what the
  * CLI found in the code today, and what review raised over the window.
+ *
+ * Each rule also carries its two evidence totals, summed and worded the way
+ * the report page sums and words them, so the terminal and the page it links
+ * to never disagree about a rule.
  */
 
 function tierLabel(rule: ReportRule): string {
@@ -32,6 +37,22 @@ function tierLabel(rule: ReportRule): string {
 
 function plural(count: number, one: string, many: string): string {
   return `${String(count)} ${count === 1 ? one : many}`;
+}
+
+/**
+ * "6 times in reviews, 1 time in conventions": each group above zero, the
+ * larger first, reviews first on a tie. Empty when the rule has neither.
+ */
+function evidenceSuffix(rule: ReportRule): string {
+  const totals = groupTotals(rule);
+  const order: SourceGroup[] =
+    totals.conventions > totals.reviews
+      ? ["conventions", "reviews"]
+      : ["reviews", "conventions"];
+  const parts = order
+    .filter((group) => totals[group] > 0)
+    .map((group) => `${plural(totals[group], "time", "times")} in ${group}`);
+  return parts.length === 0 ? "" : `: ${parts.join(", ")}`;
 }
 
 /** What review raised over the window, summed across every rule. */
@@ -59,7 +80,9 @@ export function renderSummary(options: {
     "Taskless report published",
     "",
     `Rules (${String(report.rules.length)}):`,
-    ...report.rules.map((rule) => `  - ${rule.title} (${tierLabel(rule)})`),
+    ...report.rules.map(
+      (rule) => `  - ${rule.title} (${tierLabel(rule)})${evidenceSuffix(rule)}`
+    ),
     "",
     ...(findings === undefined
       ? []
