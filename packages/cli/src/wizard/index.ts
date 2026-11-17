@@ -120,7 +120,9 @@ export async function runWizard(
 
     const proceed = await renderSummaryAndConfirm(diff, permissionPreview);
     if (!proceed) {
-      cancel(`Install cancelled. Run \`${getCliPrefix()} init\` to try again.`);
+      cancel(
+        `Install cancelled. Run \`${getCliPrefix()}\` with no arguments to try again.`
+      );
       cancelledStep = "summary";
       return finish({ status: "cancelled" });
     }
@@ -245,7 +247,7 @@ export async function runWizard(
   } catch (error) {
     if (error instanceof WizardCancelled) {
       cancel(
-        `Wizard cancelled at step "${error.step}". Run \`${getCliPrefix()} init\` to try again.`
+        `Wizard cancelled at step "${error.step}". Run \`${getCliPrefix()}\` with no arguments to try again.`
       );
       cancelledStep = error.step;
       return finish({ status: "cancelled" });

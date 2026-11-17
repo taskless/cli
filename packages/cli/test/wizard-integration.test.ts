@@ -42,7 +42,9 @@ const clackResponses: {
   globalTrust?: boolean | symbol;
   commit?: string | symbol;
   commitMessage?: string | symbol;
-} = {};
+  /** Answers, in order, to "what now?" after a commit does not go through. */
+  afterFailure: (string | symbol)[];
+} = { afterFailure: [] };
 
 // Every select the wizard asked, in order.
 const selectMessages: string[] = [];
@@ -91,6 +93,9 @@ vi.mock("@clack/prompts", () => ({
   groupMultiselect: vi.fn(() => Promise.resolve(clackResponses.locations)),
   select: vi.fn(({ message }: { message: string }) => {
     selectMessages.push(message);
+    if (message.endsWith("What now?")) {
+      return Promise.resolve(clackResponses.afterFailure.shift() ?? "leave");
+    }
     return Promise.resolve(clackResponses.commit);
   }),
   text: vi.fn(() => Promise.resolve(clackResponses.commitMessage)),
@@ -145,6 +150,7 @@ beforeEach(async () => {
   clackResponses.summary = undefined;
   clackResponses.commit = undefined;
   clackResponses.commitMessage = undefined;
+  clackResponses.afterFailure = [];
   selectMessages.length = 0;
   confirmMessages.length = 0;
   confirmDefaults.length = 0;
@@ -321,6 +327,20 @@ describe("runWizard end-to-end", () => {
     );
     expect(result.status).toBe("cancelled");
     expect(await exists(join(cwd, ".claude", "settings.json"))).toBe(false);
+  });
+
+  // `init` is the batch install and never prompts, so sending someone there to
+  // "try again" left them with no way back into the wizard.
+  it("sends a cancelled install back to the bare command, not init", async () => {
+    clackResponses.locations = ["Claude Code"];
+    clackResponses.summary = false;
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    const message = cancelSpy.mock.calls[0]?.[0] as string;
+    expect(message).toContain("with no arguments to try again");
+    expect(message).not.toMatch(/ init`/);
   });
 
   it("previews removing a Taskless rule it never recorded", async () => {
@@ -798,6 +818,21 @@ function git(directory: string, ...args: string[]): string {
   );
 }
 
+async function refusingHook(repo: string, script: string): Promise<void> {
+  const hook = join(repo, ".git", "hooks", "pre-commit");
+  await writeFile(hook, `#!/bin/sh\n${script}\n`);
+  await chmod(hook, 0o755);
+}
+
+function hasCommit(repo: string): boolean {
+  try {
+    git(repo, "rev-parse", "--verify", "HEAD");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * #554: a worktree is built from commits, and the install commits nothing, so
  * the wizard offers to make the commit itself. The tests run git with no
@@ -863,22 +898,69 @@ describe("the wizard's offer to commit the install", () => {
     expect(git(cwd, "status", "--porcelain")).toBe("");
   });
 
-  it("shows git's refusal and still completes when a hook rejects the commit", async () => {
-    const hook = join(cwd, ".git", "hooks", "pre-commit");
-    await writeFile(hook, "#!/bin/sh\necho 'hook says no' >&2\nexit 1\n");
-    await chmod(hook, 0o755);
+  it("asks what to do when a hook refuses, and still completes when left", async () => {
+    await refusingHook(cwd, "exit 1");
     clackResponses.commit = "default";
+    clackResponses.afterFailure = ["leave"];
 
     const { runWizard } = await import("../src/wizard");
     const result = await runWizard({ cwd, globalTrustEnvironment });
 
     expect(result.status).toBe("completed");
-    const warning = warnedMessages.find((message) =>
-      message.includes("git could not commit")
+    expect(selectMessages).toContain(
+      "git could not commit the Taskless files. Its output is above. What now?"
     );
-    expect(warning).toContain("hook says no");
-    expect(warning).toContain("Commit them yourself");
-    expect(() => git(cwd, "rev-parse", "--verify", "HEAD")).toThrow();
+    expect(warnedMessages).toContain(
+      "Commit the Taskless files yourself before you start your agent."
+    );
+    expect(hasCommit(cwd)).toBe(false);
+    expect(outroSpy).toHaveBeenCalledWith(
+      "Taskless is installed, but its files are not committed yet."
+    );
+  });
+
+  it("commits without hooks only when the person chooses it", async () => {
+    await refusingHook(cwd, "exit 1");
+    clackResponses.commit = "default";
+    clackResponses.afterFailure = ["skip-hooks"];
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(hasCommit(cwd)).toBe(true);
+    expect(infoMessages).toContain(
+      "Committing without running your git hooks."
+    );
+  });
+
+  it("runs the hooks again on a retry", async () => {
+    // Refuses once, then lets the commit through.
+    const marker = join(cwd, ".git", "refused-once");
+    await refusingHook(
+      cwd,
+      `if [ ! -f '${marker}' ]; then touch '${marker}'; exit 1; fi`
+    );
+    clackResponses.commit = "default";
+    clackResponses.afterFailure = ["retry"];
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(hasCommit(cwd)).toBe(true);
+    expect(
+      selectMessages.filter((message) => message.endsWith("What now?"))
+    ).toHaveLength(1);
+  });
+
+  it("says the hooks are running before git starts", async () => {
+    clackResponses.commit = "default";
+
+    const { runWizard } = await import("../src/wizard");
+    await runWizard({ cwd, globalTrustEnvironment });
+
+    expect(infoMessages.join("\n")).toContain(
+      "Your git hooks run now, in this terminal."
+    );
   });
 
   it("leaves everything uncommitted when the person will do it", async () => {

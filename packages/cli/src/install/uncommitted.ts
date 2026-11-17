@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import process from "node:process";
 
 import { CANONICAL_DIR, type InstallPlan } from "./install";
 import { renderNoticeBox } from "./notice-box";
@@ -120,22 +121,79 @@ export async function getUncommittedInstallNotice(
   );
 }
 
+/** How a commit the wizard ran turned out. */
+export type CommitResult =
+  | { ok: true }
+  /**
+   * `interrupted` when the person pressed Ctrl-C. `error` carries git's words
+   * only when they were captured, which a commit's never are: the commit
+   * writes to the terminal, so its output is already on screen.
+   */
+  | { ok: false; interrupted: boolean; error?: string };
+
 /**
  * Commit exactly `paths`, and nothing else the person had staged.
  *
  * `git commit -- <paths>` records only those paths, so an unrelated change
  * already in the index stays staged and out of this commit. The person's own
- * hooks and signing configuration run as they would for any commit; a hook
- * that refuses, or a merge in progress, comes back as git's own words.
+ * hooks and signing configuration run as they would for any commit, unless
+ * `skipHooks` is set, which the person chooses explicitly and only after a
+ * commit with hooks did not go through.
+ *
+ * git gets the terminal itself, exactly as if the person had typed
+ * `git commit`. Hooks (lefthook, husky, pre-commit) can run for minutes or
+ * draw a prompt, and with git's output captured the wizard sat on a blank
+ * screen that read as a hang. Piping the output through would show it, but a
+ * hook that checks for a terminal would then drop its colors and its
+ * interactive display. Interactive hooks read their answers from `/dev/tty`
+ * themselves, since git gives `pre-commit` no stdin, and the wizard holds no
+ * prompt open while git runs.
+ *
+ * Ctrl-C stops the commit, not the wizard. The terminal delivers SIGINT to
+ * git and its hooks as well as to this process, so git stops on its own; this
+ * process only has to not die with it, or the install loses the lines that
+ * say what to do next.
  */
 export async function commitInstall(
   cwd: string,
   paths: readonly string[],
-  message: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  message: string,
+  options: { skipHooks?: boolean } = {}
+): Promise<CommitResult> {
   const added = await run(cwd, ["add", "--", ...paths]);
-  if (!added.ok) return added;
-  return run(cwd, ["commit", "--quiet", "-m", message, "--", ...paths]);
+  if (!added.ok) return { ok: false, interrupted: false, error: added.error };
+  return runInTerminal(cwd, [
+    "commit",
+    "--quiet",
+    ...(options.skipHooks ? ["--no-verify"] : []),
+    "-m",
+    message,
+    "--",
+    ...paths,
+  ]);
+}
+
+function runInTerminal(cwd: string, args: string[]): Promise<CommitResult> {
+  let interrupted = false;
+  const onInterrupt = () => {
+    interrupted = true;
+  };
+  process.on("SIGINT", onInterrupt);
+  return new Promise<CommitResult>((resolve) => {
+    const child = spawn("git", args, { cwd, stdio: "inherit" });
+    child.on("error", (error) => {
+      resolve({ ok: false, interrupted, error: error.message });
+    });
+    child.on("close", (code, signal) => {
+      resolve(
+        code === 0
+          ? { ok: true }
+          : { ok: false, interrupted: interrupted || signal === "SIGINT" }
+      );
+    });
+  }).finally(() => {
+    process.off("SIGINT", onInterrupt);
+  });
 }
 
 function git(cwd: string, args: string[]): Promise<string | undefined> {
