@@ -1,6 +1,7 @@
 import { CLIError } from "../util/cli-error";
 import type { ReportDraft } from "./draft";
 import type { ReportFacts } from "../schemas/report-facts";
+import { evidenceIssues } from "./evidence";
 import {
   REDACTION_POLICY_VERSION,
   hasHits,
@@ -75,6 +76,33 @@ function measuredFindings(
   return draft.findings;
 }
 
+/**
+ * A rule's `sources` and `evidence`, exactly as the agent gave them, with no
+ * key for a field it left out: a report without them is the older format,
+ * and must stay byte-for-byte the payload it was.
+ */
+function evidenceOf(
+  facts: Pick<ReportFacts["rules"][number], "sources" | "evidence">
+): Pick<ReportRule, "sources" | "evidence"> {
+  return {
+    ...(facts.sources === undefined ? {} : { sources: facts.sources }),
+    ...(facts.evidence === undefined ? {} : { evidence: facts.evidence }),
+  };
+}
+
+/**
+ * Refuse what tskl.es refuses across `sources`, `evidence` and `surfaced`,
+ * naming the rule and the field. The service checks the same, after the
+ * fixtures are redacted and the payload sent; here the agent hears which fact
+ * to fix while it still has the session that produced it.
+ */
+function checkEvidence(candidates: Candidate[]): void {
+  const issues = evidenceIssues(candidates.map(({ rule }) => rule));
+  if (issues.length > 0) {
+    throw invalid(`rule evidence does not add up: ${issues.join("; ")}`);
+  }
+}
+
 /** Pair each draft rule with its facts, and add the legacy and cloud rules. */
 function mergeRules(
   draft: ReportDraft,
@@ -117,6 +145,7 @@ function mergeRules(
           ? { violations: local.violations, files: local.files ?? 0 }
           : {}),
         surfaced: ruleFacts.surfaced,
+        ...evidenceOf(ruleFacts),
       },
       status: local.tests.status,
       fail: local.tests.fail,
@@ -135,6 +164,7 @@ function mergeRules(
         language: legacy.language,
         state: "written",
         surfaced: legacy.surfaced,
+        ...evidenceOf(legacy),
       },
       // The CLI cannot run another linter's rule, so it does not claim it
       // passed. Agent-written legacy rules still count toward the gate.
@@ -158,6 +188,7 @@ function mergeRules(
         state: "candidate",
         estimatedViolations: cloud.estimatedViolations,
         surfaced: cloud.surfaced,
+        ...evidenceOf(cloud),
       },
       status: "not-run",
       fail: cloud.fail ?? null,
@@ -320,6 +351,7 @@ export function assembleReport(
 ): ReportV1 {
   const findings = measuredFindings(draft, facts);
   const candidates = mergeRules(draft, facts, findings !== undefined);
+  checkEvidence(candidates);
   enforceGate(candidates);
 
   const scope = buildScope(draft, facts);

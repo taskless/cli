@@ -6,8 +6,8 @@
 
 ## 2. Assemble and check
 
-- [ ] 2.1 Carry `sources` and `evidence` from `rules`, `legacy` and `cloud` facts to the payload in `assemble.ts`, adding no key when absent; verify with tests that a payload carries them unchanged and validates against the vendored schema, and that facts without them produce the same payload as before
-- [ ] 2.2 Add the cross-field checks (every rule or none, duplicate kind, `reviews` without review comments, counted kind without its count, count without its kind, `evidence` without `sources`) as `REPORT_INVALID` naming rule and field; verify one test per check fails when that check is disabled, and that `agent-files`/`conventions` without counts pass
+- [x] 2.1 Carry `sources` and `evidence` from `rules`, `legacy` and `cloud` facts to the payload in `assemble.ts`, adding no key when absent; verify with tests that a payload carries them unchanged and validates against the vendored schema, and that facts without them produce the same payload as before
+- [x] 2.2 Add the cross-field checks (every rule or none, duplicate kind, `reviews` without review comments, counted kind without its count, count without its kind, `evidence` without `sources`) as `REPORT_INVALID` naming rule and field; verify one test per check fails when that check is disabled, and that `agent-files`/`conventions` without counts pass
 
 ## 3. Summary
 
