@@ -152,7 +152,8 @@ export type CommitResult =
  * Ctrl-C stops the commit, not the wizard. The terminal delivers SIGINT to
  * git and its hooks as well as to this process, so git stops on its own; this
  * process only has to not die with it, or the install loses the lines that
- * say what to do next.
+ * say what to do next. A second Ctrl-C does end the wizard, for a hook that
+ * will not stop.
  */
 export async function commitInstall(
   cwd: string,
@@ -178,7 +179,11 @@ function runInTerminal(cwd: string, args: string[]): Promise<CommitResult> {
   const onInterrupt = () => {
     interrupted = true;
   };
-  process.on("SIGINT", onInterrupt);
+  // `once`, so only the first Ctrl-C is absorbed. A hook that ignores SIGINT
+  // would otherwise leave no way out: a second press finds no handler and
+  // terminates the process, which is what pressing it twice should do. The
+  // install is already on disk either way.
+  process.once("SIGINT", onInterrupt);
   return new Promise<CommitResult>((resolve) => {
     const child = spawn("git", args, { cwd, stdio: "inherit" });
     child.on("error", (error) => {
