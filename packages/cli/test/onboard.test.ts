@@ -422,8 +422,8 @@ describe("onboard recipe asks one question and finishes on its own", () => {
       : stdout.slice(start, start + title.length + next);
   }
 
-  it("is topic v14", () => {
-    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v14\)/m);
+  it("is topic v15", () => {
+    expect(stdout).toMatch(/^# Topic: onboard {5}\(CLI v.+ \/ topic v15\)/m);
   });
 
   // v10 (#554): a worktree holds only commits, and `init` commits nothing, so
@@ -469,7 +469,7 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     expect(scan).toContain("recount from the list");
   });
 
-  it("mines commit history for recurring fixes, but never counts it as surfaced", async () => {
+  it("mines commit history for recurring fixes, counted as commits and never as surfaced", async () => {
     const mine = step("Mine every source you can reach");
     expect(mine).toContain("**Commit history**");
     expect(mine.replaceAll(/\s+/g, " ")).toContain(
@@ -479,8 +479,31 @@ describe("onboard recipe asks one question and finishes on its own", () => {
     const choosing = await section("choosing-candidates");
     const scan = choosing.replaceAll(/\s+/g, " ");
     expect(scan).toContain(
-      "Evidence from commit history chooses candidates; it never counts toward these numbers"
+      "- `commits`: a commit in the window that made the fix"
     );
+    expect(scan).toContain("A commit never counts toward `surfaced`");
+  });
+
+  // taskless/cli#681: rules chosen from commits, docs, or tests published as
+  // raised in zero reviews, because only review comments had a field.
+  it("tallies every source's call-outs by kind while mining, never paths", async () => {
+    const choosing = await section("choosing-candidates");
+    const scan = choosing.replaceAll(/\s+/g, " ");
+    for (const kind of [
+      "commits",
+      "issues",
+      "conventions",
+      "agent-files",
+      "docs",
+      "tests",
+    ]) {
+      expect(scan).toContain(`- \`${kind}\`:`);
+    }
+    expect(scan).toContain(
+      "Code that merely follows a pattern is not a call-out"
+    );
+    expect(scan).toContain("no paths, file names, commits, or issue titles");
+    expect(scan).toContain("note it under that candidate with its kind");
   });
 
   it("asks the one question, set apart, through a question tool when there is one", () => {

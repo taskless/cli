@@ -1416,10 +1416,12 @@ describe("taskless report", () => {
     // The counting and estimating guidance is on demand (#672); --full prints it.
     const { stdout, exitCode } = await run(["agent", "report", "--full"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v9\)/m);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v10\)/m);
     const flat = stdout.replaceAll(/\s+/g, " ");
-    const counting = flat.slice(flat.indexOf("## Counting surfaced"));
-    expect(counting).toContain("**Only review comments count.**");
+    const counting = flat.slice(flat.indexOf("## Counting evidence"));
+    expect(counting).toContain(
+      "**Only review comments count toward `surfaced`.**"
+    );
     expect(counting).toContain(
       "A fix-up commit, a `git blame` date, or a finding in the code today is not a review comment"
     );
@@ -1437,6 +1439,28 @@ describe("taskless report", () => {
       flat.indexOf("**Clean up.**")
     );
     expect(show).toContain("which are **your estimate**");
+  });
+
+  // taskless/cli#681: evidence beyond review comments had no field.
+  it("defines one call-out for every kind evidence counts, never paths", async () => {
+    const { stdout, exitCode } = await run([
+      "agent",
+      "report",
+      "--section",
+      "counting-evidence",
+    ]);
+    expect(exitCode).toBe(0);
+    for (const kind of RULE_SOURCES) {
+      expect(stdout).toMatch(new RegExp(`^\\| \`${kind}\` +\\| \\S`, "m"));
+    }
+    const flat = stdout.replaceAll(/\s+/g, " ");
+    expect(flat).toContain(
+      "Code that merely follows a pattern is not a call-out"
+    );
+    expect(flat).toContain("Commits count inside `window`");
+    expect(flat).toContain(
+      "No path, file name, commit, or issue title goes in the facts"
+    );
   });
 
   // An agent grepped for the escape helper, found where escaping already

@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v9)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v10)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -53,13 +53,15 @@ later and deletes one on request.
      for one you did not read.
    - `rules`: one entry per rule the draft listed, with a title a
      reader understands, an `explain` written as
-     [Explaining a rule](#explaining-a-rule) says, and its `surfaced`
-     counts, counted as [Counting surfaced](#counting-surfaced) says.
+     [Explaining a rule](#explaining-a-rule) says, its `surfaced`
+     counts, and its `sources` and `evidence`, all counted as
+     [Counting evidence](#counting-evidence) says.
    - `legacy`: rules you wrote into the repository's own linter, which
      the CLI cannot see. Each one needs an `explain` too.
    - `cloud`: runtime-shaped candidates you judged better solved by a
-     runtime rule and did not author. Count their `surfaced` the same
-     way, and give each one an `explain`. Give each one
+     runtime rule and did not author. Count their `surfaced`,
+     `sources` and `evidence` the same way, and give each one an
+     `explain`. Give each one
      `estimatedViolations`: how many instances of its pattern you
      estimate are in the code today, made as
      [Estimating violations](#estimating-violations) says. No rule has
@@ -83,8 +85,8 @@ later and deletes one on request.
    asking.
 
 4. **Show the result.** On success the CLI prints a short summary: the
-   rules, what they found in the code today, what review raised over
-   the window, the link, and when it expires. Relay it to the user as
+   rules with each one's evidence totals, what they found in the code
+   today, what review raised over the window, the link, and when it expires. Relay it to the user as
    ordinary chat text, NOT inside a code block or quote: a fenced block
    makes the link unclickable and buries the report the whole session
    led up to. Keep its content and order; do not add, drop, or reword
@@ -130,17 +132,19 @@ who never saw the session understands what the rule protects.
   both.
 - Ground it in what you saw: the review comments, the code, the bug
   the pattern caused. Do not restate the title.
-- No counts. The report already carries `violations`, `surfaced` and
-  `estimatedViolations`, labelled apart; a number in prose is a third
-  copy that can contradict them.
+- No counts. The report already carries `violations`, `surfaced`,
+  `evidence` and `estimatedViolations`, labelled apart; a number in
+  prose is another copy that can contradict them.
 - No names, hosts, or contact details. The CLI screens `explain` like
   `title` and refuses the publish if its patterns match.
 
 <!-- on-demand -->
-## Counting surfaced
+## Counting evidence
 
-Every agent counts `surfaced` the same way, so reports from different
-sessions compare:
+Every agent counts the same way, so reports from different sessions
+compare. Use the list you kept while mining; do not re-read.
+
+`surfaced` counts review comments, and only those:
 
 - **`surfaced.prs`**: pull or merge requests merged inside `window`
   with at least one review comment asking for the change the rule
@@ -156,10 +160,31 @@ sessions compare:
   keywords: "fixed" or "removed" in a reply says nothing about which
   rule it concerns.
 - A comment that asks for two rules' changes counts once for each.
-- **Only review comments count.** A fix-up commit, a `git blame`
-  date, or a finding in the code today is not a review comment,
-  however well it shows what the rule is worth. The facts have no
-  field for it; leave it out rather than count it as review.
+- **Only review comments count toward `surfaced`.** A fix-up commit, a
+  `git blame` date, or a finding in the code today is not a review
+  comment, however well it shows what the rule is worth.
+
+`sources` lists the kinds a rule came from, each once, and `evidence`
+counts its call-outs per kind: places that state or ask for the
+pattern. Code that merely follows a pattern is not a call-out.
+
+| Kind          | One call-out is                                         |
+| ------------- | ------------------------------------------------------- |
+| `reviews`     | a review comment; its count is `surfaced`, not evidence |
+| `commits`     | a commit inside `window` that made the fix              |
+| `issues`      | an issue, ticket, recorded decision, or comment on one  |
+| `agent-files` | a line in CLAUDE.md, AGENTS.md, or similar              |
+| `conventions` | a TODO, FIXME, XXX, or HACK comment asking for it       |
+| `docs`        | a docs passage, `@deprecated` and the like included     |
+| `tests`       | a test that pins the behaviour                          |
+
+- Commits count inside `window`; every other kind as you found it.
+- A listed `commits`, `issues`, `docs`, or `tests` needs its count.
+  `agent-files` and `conventions` may be listed without one.
+- Listing `reviews` needs at least one counted review comment.
+- Give `sources` on every rule or on none.
+- Kinds and counts only. No path, file name, commit, or issue title
+  goes in the facts.
 
 <!-- on-demand -->
 ## Estimating violations
