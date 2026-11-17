@@ -1,3 +1,5 @@
+import type { Evidence, RuleSource } from "./evidence";
+
 /**
  * The ReportV1 payload, as this CLI builds it.
  *
@@ -53,6 +55,10 @@ export interface ReportRule {
    */
   estimatedViolations?: number;
   surfaced?: Surfaced;
+  /** The kinds of source the rule came from, on every rule or on none. */
+  sources?: RuleSource[];
+  /** Explicit call-outs per listed kind; `reviews` is counted by `surfaced`. */
+  evidence?: Evidence;
   tests: ReportTests;
 }
 

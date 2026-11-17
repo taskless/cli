@@ -83,7 +83,7 @@
               },
               "required": ["from", "to"],
               "additionalProperties": false,
-              "description": "The period the PR history was mined over."
+              "description": "The period the history (merged PRs and commits) was mined over."
             }
           },
           "required": ["provider", "owner", "repo", "url", "window"],
@@ -293,6 +293,67 @@
             "required": ["prs", "reviewComments"],
             "additionalProperties": false,
             "description": "How often reviewers raised this rule's pattern in `scope.window`: what the rule saves reviewers. Requires `history`."
+          },
+          "sources": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent-files",
+                "conventions",
+                "reviews",
+                "commits",
+                "issues",
+                "docs",
+                "tests"
+              ]
+            },
+            "description": "Where the rule came from, as kinds, never file names or paths. Each kind belongs to one of two groups. The conventions group, what the repository writes down: `agent-files`, the instructions the repository keeps for coding agents (such as AGENTS.md or CLAUDE.md); `conventions`, a pattern the repository's code already follows, or one a code comment such as TODO, FIXME, XXX or HACK asks for; `docs`, the repository's documentation, including doc annotations such as `@deprecated`, other than its agent files; `tests`, tests the repository already has that pin the behaviour. The reviews group, where a person or an agent pointed it out: `reviews`, review comments on merged PRs in `scope.window`, from the mined PR history; `commits`, a fix that recurs in the repository's commit history in `scope.window`; `issues`, issues, tickets or recorded decisions in a bug tracker or engineering-context tool, and their comments. List every kind that applies, each once. On every tier and state, Cloud candidates and legacy rules included. Give it on every rule or on none. A rule that lists `reviews` must carry `surfaced` with at least one review comment; a rule may carry `surfaced` without listing `reviews`, because reviewers can ask for a rule that came from elsewhere. A rule that lists `commits`, `issues`, `docs` or `tests` must carry its count in `evidence`; `agent-files` and `conventions` may be listed without one."
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "agent-files": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Lines in the repository's agent files that state or ask for this rule's pattern, as the agent found them at publish."
+              },
+              "conventions": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Code comments (TODO, FIXME, XXX, HACK and the like) in the repository's code that ask for this rule's pattern, as the agent found them at publish. Code that merely follows the pattern is not counted."
+              },
+              "commits": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Commits in `scope.window` that made this rule's fix, from the repository's git history."
+              },
+              "issues": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Issues, tickets, recorded decisions or comments on them that asked for this rule's pattern, as the agent found them at publish."
+              },
+              "docs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Passages in the repository's documentation, doc annotations such as `@deprecated` included, that state or ask for this rule's pattern, as the agent found them at publish."
+              },
+              "tests": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000,
+                "description": "Tests in the repository that pin the behaviour this rule enforces, as the agent found them at publish."
+              }
+            },
+            "additionalProperties": false,
+            "description": "How many explicit call-outs of this rule's pattern each of its `sources` holds: places that state or ask for it, never code that merely follows it. Keyed by kind, each a count of at least 1; a kind left out has none. Every kind but `reviews`, whose count is `surfaced.reviewComments`. Each key's kind must be listed in `sources`. Does not require `history`."
           },
           "tests": {
             "type": "object",
@@ -509,6 +570,11 @@
             "prs": 96,
             "reviewComments": 142
           },
+          "sources": ["conventions", "reviews", "commits"],
+          "evidence": {
+            "conventions": 3,
+            "commits": 12
+          },
           "tests": {
             "status": "pass",
             "fail": {
@@ -531,6 +597,11 @@
           "surfaced": {
             "prs": 63,
             "reviewComments": 88
+          },
+          "sources": ["agent-files", "reviews", "issues"],
+          "evidence": {
+            "agent-files": 1,
+            "issues": 4
           },
           "tests": {
             "status": "not-run",

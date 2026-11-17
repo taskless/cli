@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { EVIDENCE_SOURCES, RULE_SOURCES } from "../report/evidence";
+
 /**
  * What the agent knows that the CLI cannot: the facts `taskless report --from`
  * reads.
@@ -38,6 +40,27 @@ const surfaced = z
   .strict()
   .describe("How often review raised this rule's pattern over the window");
 
+const sources = z
+  .array(z.enum(RULE_SOURCES))
+  .min(1)
+  .describe(
+    "The kinds of source this rule came from, each once, never paths or file names. Conventions: `agent-files` (AGENTS.md, CLAUDE.md and the like), `conventions` (a pattern the code follows, or a TODO/FIXME-style comment asking for it), `docs` (documentation, `@deprecated` included), `tests` (tests that pin the behaviour). Reviews: `reviews` (review comments, counted in `surfaced`), `commits` (commits in the window that made the fix), `issues` (issues, tickets, recorded decisions, and comments on them). Give it on every rule or on none"
+  );
+
+const evidence = z
+  .object(
+    Object.fromEntries(
+      EVIDENCE_SOURCES.map((source) => [
+        source,
+        z.number().int().min(1).optional(),
+      ])
+    ) as Record<(typeof EVIDENCE_SOURCES)[number], z.ZodOptional<z.ZodNumber>>
+  )
+  .strict()
+  .describe(
+    "How many explicit call-outs of this rule's pattern each listed kind holds: places that state or ask for it, never code that merely follows it. Each at least 1; leave a kind out for none. `reviews` has no key: `surfaced.reviewComments` is its count. Every key must be listed in `sources`, and `commits`, `issues`, `docs` and `tests` need a count when listed"
+  );
+
 const outcome = {
   title: z
     .string()
@@ -58,6 +81,8 @@ const outcome = {
       "Why this rule is worth holding in this codebase, in one or two sentences: what goes wrong without it, and what holding it buys"
     ),
   surfaced,
+  sources: sources.optional(),
+  evidence: evidence.optional(),
 };
 
 const fixture = z
