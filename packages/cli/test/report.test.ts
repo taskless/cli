@@ -98,6 +98,19 @@ function factsFor(
   });
 }
 
+/** The message of the `REPORT_INVALID` a run throws, or empty when it does not. */
+function messageOf(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof CLIError && error.code === "REPORT_INVALID") {
+      return error.message;
+    }
+    throw error;
+  }
+  return "";
+}
+
 function codeOf(run: () => unknown): string | undefined {
   try {
     run();
@@ -243,6 +256,157 @@ describe("assembleReport", () => {
     expect(report.rules[0]).toMatchObject({
       state: "written",
       surfaced: { prs: 6, reviewComments: 9 },
+    });
+  });
+
+  it("carries sources and evidence unchanged, on every tier", () => {
+    const evidence = {
+      sources: ["commits", "docs"],
+      evidence: { commits: 4, docs: 1 },
+    };
+    const facts = factsFor(three, {
+      rules: three.map((id) => ({
+        id,
+        title: `Rule ${id}`,
+        explain: "Holding it keeps review on design instead of style.",
+        surfaced: { prs: 0, reviewComments: 0 },
+        ...evidence,
+      })),
+      legacy: [
+        {
+          id: "no-moment",
+          title: "No moment",
+          explain: "Moment is frozen and heavy.",
+          surfaced: { prs: 1, reviewComments: 2 },
+          tool: "eslint",
+          language: "TypeScript",
+          sources: ["reviews", "agent-files"],
+        },
+      ],
+      cloud: [
+        {
+          id: "idempotent-jobs",
+          title: "Jobs are idempotent",
+          explain: "A retried job charges twice.",
+          surfaced: { prs: 0, reviewComments: 0 },
+          language: "TypeScript",
+          estimatedViolations: 3,
+          sources: ["issues"],
+          evidence: { issues: 2 },
+        },
+      ],
+    });
+    const report = assembleReport(
+      draftOf(three.map((id) => localRule(id))),
+      facts
+    );
+    expect(reportSchemaIssues(report)).toEqual([]);
+    expect(report.rules[0]).toMatchObject(evidence);
+    const legacy = report.rules.find((rule) => rule.id === "no-moment");
+    expect(legacy?.sources).toEqual(["reviews", "agent-files"]);
+    expect(legacy).not.toHaveProperty("evidence");
+    expect(
+      report.rules.find((rule) => rule.id === "idempotent-jobs")
+    ).toMatchObject({ sources: ["issues"], evidence: { issues: 2 } });
+  });
+
+  it("adds neither field when the facts give neither", () => {
+    const report = assembleReport(
+      draftOf(three.map((id) => localRule(id))),
+      factsFor(three)
+    );
+    for (const rule of report.rules) {
+      expect(rule).not.toHaveProperty("sources");
+      expect(rule).not.toHaveProperty("evidence");
+    }
+  });
+
+  describe("refuses evidence tskl.es would refuse, naming rule and field", () => {
+    type Extra = { sources?: string[]; evidence?: Record<string, number> };
+    function withEvidence(perRule: Extra[], reviewComments = 0): () => unknown {
+      return () =>
+        assembleReport(
+          draftOf(three.map((id) => localRule(id))),
+          factsFor(three, {
+            rules: three.map((id, index) => ({
+              id,
+              title: `Rule ${id}`,
+              explain: "Holding it keeps review on design instead of style.",
+              surfaced: { prs: reviewComments, reviewComments },
+              ...perRule[index],
+            })),
+          })
+        );
+    }
+    const conventions: Extra = { sources: ["conventions"] };
+
+    it("sources on some rules but not all", () => {
+      expect(messageOf(withEvidence([conventions, conventions, {}]))).toContain(
+        "every rule or on none; these rules have none: c"
+      );
+    });
+
+    it("a kind listed twice", () => {
+      expect(
+        messageOf(
+          withEvidence([
+            { sources: ["conventions", "conventions"] },
+            conventions,
+            conventions,
+          ])
+        )
+      ).toContain("a.sources lists conventions twice");
+    });
+
+    it("reviews without a review comment", () => {
+      expect(
+        messageOf(
+          withEvidence([{ sources: ["reviews"] }, conventions, conventions])
+        )
+      ).toContain("a.sources lists reviews, so surfaced.reviewComments");
+      expect(
+        codeOf(
+          withEvidence([{ sources: ["reviews"] }, conventions, conventions], 2)
+        )
+      ).toBeUndefined();
+    });
+
+    it("a counted kind without its count", () => {
+      expect(
+        messageOf(
+          withEvidence([{ sources: ["commits"] }, conventions, conventions])
+        )
+      ).toContain("a.sources lists commits, so it needs evidence.commits");
+    });
+
+    it("a count without its kind", () => {
+      expect(
+        messageOf(
+          withEvidence([
+            { sources: ["conventions"], evidence: { tests: 2 } },
+            conventions,
+            conventions,
+          ])
+        )
+      ).toContain("a.evidence.tests needs sources to list tests");
+    });
+
+    it("evidence without sources", () => {
+      expect(
+        messageOf(withEvidence([{ evidence: { docs: 1 } }, {}, {}]))
+      ).toContain("a: evidence requires sources");
+    });
+
+    it("but not the original kinds listed without counts", () => {
+      expect(
+        codeOf(
+          withEvidence([
+            { sources: ["agent-files", "conventions"] },
+            conventions,
+            { sources: ["agent-files"] },
+          ])
+        )
+      ).toBeUndefined();
     });
   });
 
