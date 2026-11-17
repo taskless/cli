@@ -19,6 +19,11 @@ import { stringify } from "yaml";
 
 import reportSchemaDocument from "../src/generated/report-v1.schema.json";
 import { assembleReport } from "../src/report/assemble";
+import {
+  EVIDENCE_SOURCES,
+  RULE_SOURCES,
+  SOURCE_GROUPS,
+} from "../src/report/evidence";
 import type { LocalRule, ReportDraft } from "../src/report/draft";
 import {
   reportFactsSchema,
@@ -111,6 +116,68 @@ describe("the vendored ReportV1 schema", () => {
     expect(
       reportSchemaIssues({ ...(example as object), surprise: true })
     ).not.toEqual([]);
+  });
+});
+
+/** Whether the facts accept one rule carrying `extra`. */
+function factsAcceptRule(extra: Record<string, unknown>): boolean {
+  return reportFactsSchema.safeParse({
+    ...factsFor([]),
+    rules: [
+      {
+        id: "a",
+        title: "Rule a",
+        explain: "Holding it keeps review on design.",
+        surfaced: { prs: 0, reviewComments: 0 },
+        ...extra,
+      },
+    ],
+  }).success;
+}
+
+describe("the kinds of rule evidence", () => {
+  const ruleSchema = (
+    reportSchemaDocument as unknown as {
+      properties: {
+        rules: {
+          items: {
+            properties: {
+              sources: { items: { enum: string[] } };
+              evidence: { properties: Record<string, unknown> };
+            };
+          };
+        };
+      };
+    }
+  ).properties.rules.items.properties;
+
+  // A schema refresh that adds a kind fails here until the kind has a group:
+  // otherwise its counts would be summed into neither total.
+  it("are the vendored schema's, each with a group", () => {
+    expect([...RULE_SOURCES]).toEqual(ruleSchema.sources.items.enum);
+    expect(Object.keys(SOURCE_GROUPS).toSorted()).toEqual(
+      [...RULE_SOURCES].toSorted()
+    );
+    expect(Object.keys(ruleSchema.evidence.properties).toSorted()).toEqual(
+      [...EVIDENCE_SOURCES].toSorted()
+    );
+    expect(
+      RULE_SOURCES.filter((s) => !EVIDENCE_SOURCES.includes(s as never))
+    ).toEqual(["reviews"]);
+  });
+
+  it("are the only ones the facts accept, each counted at least once", () => {
+    expect(
+      factsAcceptRule({ sources: ["commits"], evidence: { commits: 2 } })
+    ).toBe(true);
+    expect(factsAcceptRule({ sources: ["trackers"] })).toBe(false);
+    expect(factsAcceptRule({ sources: [] })).toBe(false);
+    expect(factsAcceptRule({ sources: ["docs"], evidence: { docs: 0 } })).toBe(
+      false
+    );
+    expect(
+      factsAcceptRule({ sources: ["reviews"], evidence: { reviews: 3 } })
+    ).toBe(false);
   });
 });
 
