@@ -15,8 +15,8 @@
 
 ## 4. Recipes
 
-- [ ] 4.1 Rewrite `onboard.md` "Choosing candidates" to tally every source's call-outs per candidate with its kind while mining, crediting commits as `commits` evidence and never as `surfaced`; bump the topic version; verify the recipe tests and the section budget pass
-- [ ] 4.2 Rename `report.md` "Counting surfaced" to "Counting evidence", add the per-kind call-out definitions, window rule and kinds-not-paths rule, and ask for `sources`/`evidence` in step 2; bump the topic version; verify with `pnpm build && pnpm cli agent report` that the section reads as the delta specifies and the recipe tests and section budget pass
+- [x] 4.1 Rewrite `onboard.md` "Choosing candidates" to tally every source's call-outs per candidate with its kind while mining, crediting commits as `commits` evidence and never as `surfaced`; bump the topic version; verify the recipe tests and the section budget pass
+- [x] 4.2 Rename `report.md` "Counting surfaced" to "Counting evidence", add the per-kind call-out definitions, window rule and kinds-not-paths rule, and ask for `sources`/`evidence` in step 2; bump the topic version; verify with `pnpm build && pnpm cli agent report` that the section reads as the delta specifies and the recipe tests and section budget pass
 
 ## 5. Ship
 

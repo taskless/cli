@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v14)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v15)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -221,15 +221,31 @@ Note, for the report, how many pull requests and review comments
 raised each one in the window you mined: a pull request counts when it
 merged in the window and a review comment on it asked for the change,
 and each such comment counts. Bot and author comments count too. Judge
-each comment by reading it, never by matching keywords. Evidence from
-commit history chooses candidates; it never counts toward these
-numbers, which count review comments alone.
+each comment by reading it, never by matching keywords. These numbers
+are `surfaced`, and they count review comments alone.
 
-Count while you mine, not afterwards. As each comment joins a
-candidate, note its pull request and comment under that candidate,
-scoped to the rule you expect to write rather than a broader theme,
-so the counts come from that list instead of a second read. When
-`route` narrows a candidate, recount from the list.
+Every other source is credited too, as its own kind of evidence, so a
+rule chosen from commit history does not publish as raised in zero
+reviews. Note each call-out, a place that states or asks for the
+pattern, under its kind:
+
+- `commits`: a commit in the window that made the fix
+- `issues`: an issue, ticket, recorded decision, or a comment on one
+- `conventions`: a TODO, FIXME, XXX, or HACK comment asking for it
+- `agent-files`: a line in CLAUDE.md, AGENTS.md, or similar
+- `docs`: a passage in the docs, `@deprecated` and the like included
+- `tests`: a test that pins the behaviour
+
+Code that merely follows a pattern is not a call-out. A commit never
+counts toward `surfaced`, however clearly it shows the rule's worth.
+Keep kinds and counts only: no paths, file names, commits, or issue
+titles reach the report.
+
+Count while you mine, not afterwards. As each comment or call-out
+joins a candidate, note it under that candidate with its kind, scoped
+to the rule you expect to write rather than a broader theme, so the
+counts come from that list instead of a second read. When `route`
+narrows a candidate, recount from the list.
 
 <!-- on-demand -->
 ## Legacy and runtime candidates
