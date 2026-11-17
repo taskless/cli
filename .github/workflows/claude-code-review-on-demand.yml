@@ -53,6 +53,22 @@ name: Claude Code Review (on demand)
 #   - fires ONLY on a maintainer's comment (author_association gate), so an
 #     outside contributor on a fork can never trigger it.
 #
+# The review reports itself on the PR as a `Claude Review` COMMIT STATUS, on
+# the head commit it checked out: pending while it runs, then success, failure
+# or error. Without it the run is invisible to the PR. A comment-triggered run
+# is a run for the default branch, so its own check lands on `main`'s tip and
+# a "wait for all checks" loop on the PR finishes while the review is still
+# going. Watching the tracking comment instead does not work either: it is
+# edited many times, and no edit says it is the last. The status is advisory,
+# NOT a required check: a required status that was never posted stays pending
+# forever, and most PRs are never reviewed. A status stuck on pending (a runner
+# that died before the final step) clears with a re-run.
+#
+# `statuses: write` is safe ONLY while `gh api` stays out of `--allowedTools`.
+# The model's environment holds this job's token, and `gh pr` has no status
+# subcommand, so today only workflow steps can set the status. Give the model
+# `gh api` and a prompt-injected diff can mark its own review green.
+#
 # `Read` in `--allowedTools` is COUPLED to keeping every token out of the
 # model's reach. The reviewer needs to open whole files — the findings worth
 # having come from surviving references in untouched regions, from a directory's
@@ -114,6 +130,9 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # The `Claude Review` commit status. See the header: safe only while
+      # `gh api` is not on the model's allowlist.
+      statuses: write
 
     steps:
       # Resolved BEFORE checkout: the checkout ref depends on it. The PR number
@@ -180,6 +199,25 @@ jobs:
           # PR content — leaving the token in `.git/config` would put it a step
           # away from anything that later runs in this tree.
           persist-credentials: false
+
+      # Posted as early as possible, so the PR goes yellow the moment a review
+      # is under way. The SHA is PINNED to the commit this checkout resolved,
+      # read from the tree rather than re-queried from the PR: a push that
+      # lands while the review runs moves the PR's head, and the status belongs
+      # on the commit that was reviewed, not on one nobody looked at.
+      - name: Mark the review pending on the PR
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+            -f state=pending \
+            -f context="Claude Review" \
+            -f description="Claude is reviewing this commit" \
+            -f target_url="${TARGET_URL}" > /dev/null
 
       # The prior review, fetched by the WORKFLOW rather than by the model.
       #
@@ -707,3 +745,27 @@ jobs:
 
           sys.exit(1 if failed else 0)
           PYEOF
+
+      # Resolves the status the pending step posted. `job.status` at this point
+      # already carries the verify step's verdict, so `success` here means a
+      # completed review from this run is on the PR. `always()` so a failed or
+      # cancelled run never leaves the status pending; skipped only when the
+      # pending status was never posted.
+      - name: Report the review result on the PR
+        if: always() && steps.status.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.status.outputs.sha }}
+          JOB_STATUS: ${{ job.status }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$JOB_STATUS" in
+            success)   state=success; description="Review posted" ;;
+            cancelled) state=error;   description="Review cancelled; re-run the workflow to retry" ;;
+            *)         state=failure; description="No completed review was posted; see the run" ;;
+          esac
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="${state}" \
+            -f context="Claude Review" \
+            -f description="${description}" \
+            -f target_url="${TARGET_URL}" > /dev/null
