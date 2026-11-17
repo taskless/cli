@@ -21,4 +21,4 @@
 ## 5. Ship
 
 - [x] 5.1 Add a `patch` changeset for `@taskless/cli` describing the new facts fields and summary totals; verify `pnpm typecheck`, `pnpm lint` and `pnpm test` pass
-- [ ] 5.2 Run `pnpm openspec validate report-rule-evidence --strict`, then the pre-archive check from AGENTS.md (archive, confirm every prior scenario of `cli-report` and `cli-onboard` survives, reset); archive the change and verify `openspec/changes/` holds only `archive/`
+- [x] 5.2 Run `pnpm openspec validate report-rule-evidence --strict`, then the pre-archive check from AGENTS.md (archive, confirm every prior scenario of `cli-report` and `cli-onboard` survives, reset); archive the change and verify `openspec/changes/` holds only `archive/`
