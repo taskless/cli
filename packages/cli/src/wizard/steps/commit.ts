@@ -47,13 +47,66 @@ export async function promptCommit(
     message = written.trim();
   }
 
-  const result = await commitInstall(cwd, paths, message);
-  if (result.ok) {
-    log.success(`Committed the Taskless files: ${message}`);
-  } else {
-    log.warn(
-      `git could not commit the Taskless files:\n${result.error}\nCommit them yourself before you start your agent.`
-    );
-  }
+  await commitWithRetry(cwd, paths, message);
   return choice;
+}
+
+/** What to do after a commit that did not go through. */
+type AfterFailure = "retry" | "skip-hooks" | "leave";
+
+/**
+ * Run the commit, and when it does not go through, ask what to do instead of
+ * giving up. A hook that refuses or hangs is the usual reason, so committing
+ * without hooks is offered, but only here and only as the person's choice:
+ * hooks are the project's rules, and the wizard never waives them on its own.
+ */
+async function commitWithRetry(
+  cwd: string,
+  paths: readonly string[],
+  message: string
+): Promise<void> {
+  let skipHooks = false;
+  for (;;) {
+    // Said before git starts, because nothing else from the wizard is on
+    // screen while a slow hook runs.
+    log.info(
+      skipHooks
+        ? "Committing without running your git hooks."
+        : "Committing. Your git hooks run now, in this terminal. Press Ctrl-C to stop the commit; the install stays in place."
+    );
+    const result = await commitInstall(cwd, paths, message, { skipHooks });
+    if (result.ok) {
+      log.success(`Committed the Taskless files: ${message}`);
+      return;
+    }
+
+    const reason = result.interrupted
+      ? "The commit was stopped."
+      : result.error === undefined
+        ? "git could not commit the Taskless files. Its output is above."
+        : `git could not commit the Taskless files:\n${result.error}`;
+    const options: { value: AfterFailure; label: string; hint?: string }[] = [
+      { value: "retry", label: "Try again" },
+    ];
+    if (!skipHooks) {
+      options.push({
+        value: "skip-hooks",
+        label: "Commit without running git hooks",
+        hint: "git commit --no-verify",
+      });
+    }
+    options.push({ value: "leave", label: "Leave it, I'll commit myself" });
+
+    const next = await select<AfterFailure>({
+      message: `${reason} What now?`,
+      options,
+    });
+    if (isCancel(next) || next === "leave") {
+      log.warn(
+        "Commit the Taskless files yourself before you start your agent."
+      );
+      return;
+    }
+    if (next === "skip-hooks") skipHooks = true;
+  }
 }
