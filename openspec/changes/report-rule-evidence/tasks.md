@@ -11,7 +11,7 @@
 
 ## 3. Summary
 
-- [ ] 3.1 Add each rule's evidence totals to its summary line in `summary.ts` (sums, ordering, tie, "1 time", omitted at zero) per design D4; verify with tests for the three summary scenarios in the `cli-report` delta and that a report without evidence renders as before apart from rules with review comments
+- [x] 3.1 Add each rule's evidence totals to its summary line in `summary.ts` (sums, ordering, tie, "1 time", omitted at zero) per design D4; verify with tests for the three summary scenarios in the `cli-report` delta and that a report without evidence renders as before apart from rules with review comments
 
 ## 4. Recipes
 
