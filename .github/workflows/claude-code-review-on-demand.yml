@@ -205,6 +205,11 @@ jobs:
       # read from the tree rather than re-queried from the PR: a push that
       # lands while the review runs moves the PR's head, and the status belongs
       # on the commit that was reviewed, not on one nobody looked at.
+      #
+      # A failed post is a WARNING, never a step failure. Every later step
+      # without a status function implicitly requires `success()`, so a red
+      # step here would skip the review itself over a status the PR does not
+      # require.
       - name: Mark the review pending on the PR
         id: status
         env:
@@ -217,7 +222,8 @@ jobs:
             -f state=pending \
             -f context="Claude Review" \
             -f description="Claude is reviewing this commit" \
-            -f target_url="${TARGET_URL}" > /dev/null
+            -f target_url="${TARGET_URL}" > /dev/null \
+            || echo "::warning::Could not post the pending Claude Review status; the review continues."
 
       # The prior review, fetched by the WORKFLOW rather than by the model.
       #
