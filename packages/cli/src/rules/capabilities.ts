@@ -212,7 +212,7 @@ export const AST_GREP_TSX_SPLIT: Readonly<
  * Pinned against the binary by `test/vale-vendor-contract.test.ts`
  * ("engine capabilities" → "reports the pinned version").
  */
-export const VALE_VERSION = "3.26.0";
+export const VALE_VERSION = "3.27.0";
 
 /**
  * Which tier Vale routes an extension to.
