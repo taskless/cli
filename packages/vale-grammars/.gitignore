@@ -1,0 +1,7 @@
+# The grammar modules are fetched and unpacked by the release pipeline
+# (.github/workflows/release-vale.yml), never committed. A clean checkout of
+# this repository holds no grammar modules.
+grammars/
+
+# npm pack output from a local dry run of that pipeline.
+*.tgz

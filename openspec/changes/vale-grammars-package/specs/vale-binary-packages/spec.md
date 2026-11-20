@@ -23,7 +23,7 @@ The package SHALL follow the platform packages' rules for contents and versionin
 
 ### Requirement: Fetched grammars are verified against committed checksums
 
-The repository SHALL commit a SHA256 checksum for each upstream grammar archive. Upstream's checksums file does not cover these archives, so the detect phase SHALL compute each digest from the archive it downloads and SHALL propose it in the same manifest pull request as the binary digests, where a human reviews it before anything can be published.
+The repository SHALL commit a SHA256 checksum for each upstream grammar archive. Upstream's checksums file does not cover these archives, so the detect phase SHALL take each digest from the digest the upstream release records for that asset, SHALL refuse an asset that has none, and SHALL propose the digests in the same manifest pull request as the binary digests, where a human reviews them before anything can be published.
 
 The release pipeline SHALL verify every fetched grammar archive against its committed checksum before unpacking it, SHALL refuse to publish on a mismatch, and SHALL refuse to publish when an archive the manifest names is missing upstream. Grammar modules SHALL NOT be stored in version control.
 
@@ -46,7 +46,7 @@ The release pipeline SHALL verify every fetched grammar archive against its comm
 
 The workflow that releases the platform packages SHALL also release the grammar package, from the same reviewed manifest, stamped with the same version as the platform packages in the same run. A run SHALL be considered already published only when both the platform packages and the grammar package have a version for the pinned Vale release.
 
-The CLI's dependencies on the grammar package and on the platform packages SHALL be moved together, by the same pull request, and SHALL name the same Vale release. Publishing the grammar package SHALL change no consumer until that pin moves.
+The CLI's dependencies on the grammar package and on the platform packages SHALL be moved together, by the same pull request, and SHALL all be the same exact stamped version. Publishing the grammar package SHALL change no consumer until that pin moves.
 
 #### Scenario: Merging the update publishes binaries and grammars together
 
@@ -61,4 +61,4 @@ The CLI's dependencies on the grammar package and on the platform packages SHALL
 #### Scenario: The pins never straddle two Vale releases
 
 - **WHEN** the pull request that moves the CLI's Vale pins is opened
-- **THEN** it SHALL move the grammar package pin with the platform pins, and both SHALL name the same Vale release
+- **THEN** it SHALL move the grammar package pin with the platform pins, all to one exact stamped version

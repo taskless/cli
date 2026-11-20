@@ -126,9 +126,11 @@ Taskless runs prose rules with [Vale](https://vale.sh). The CLI lists one npm pa
 
 Each package holds the upstream `vale` binary, its MIT `LICENSE`, a README, and `package.json`. It has no JavaScript and no install script, so it works under package managers that refuse dependency build scripts.
 
-The binaries aren't committed. The pipeline works in two halves:
+A seventh package, `@taskless/vale-grammars`, holds the tree-sitter grammars Vale uses to find comments in source code. Since Vale 3.27.0 they ship apart from the binary. They are WebAssembly, the same bytes on every host, so there is one package rather than one per platform, and the CLI names its directory to Vale through `VALE_GRAMMARS_PATH`.
 
-- **`release-vale.yml`** watches upstream Vale releases. When one appears it opens a pull request that pins the new version and its six archive digests in `.github/scripts/vale-manifest.json`. After a person reviews and merges it, the workflow downloads each archive, verifies it against the committed digest, and publishes the packages over OIDC as `<valeVersion>-<timestamp>`.
+The binaries and grammars aren't committed. The pipeline works in two halves:
+
+- **`release-vale.yml`** watches upstream Vale releases. When one appears it opens a pull request that pins the new version, its six binary archive digests, and a digest for each grammar archive in `.github/scripts/vale-manifest.json`. After a person reviews and merges it, the workflow downloads each archive, verifies it against the committed digest, and publishes all seven packages over OIDC as one `<valeVersion>-<timestamp>`.
 - **`vale-upgrade.yml`** moves the CLI's pins onto the newly published set, as a separate pull request.
 
 The Vale packages are versioned outside Changesets, and publishing them changes nothing for a CLI user until the CLI's pins move. Each package's README covers versioning and provenance in detail.

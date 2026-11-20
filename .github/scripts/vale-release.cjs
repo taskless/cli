@@ -341,7 +341,173 @@ function assertManifest(manifest) {
     }
     seen.add(platform.package);
   }
+  assertGrammars(manifest.grammars, seen);
   return manifest;
+}
+
+// ---------------------------------------------------------------------------
+// Grammars
+//
+// Vale 3.27.0 moved its tree-sitter grammars out of the binary into
+// WebAssembly modules, published upstream as one `grammar-<name>.zip` per
+// language. They are the same bytes on every host, so they ship as ONE
+// platform-independent package rather than a copy inside each platform
+// package: a grammar then cannot be one version on macOS and another on Linux.
+//
+// Upstream's checksums file does not cover these archives. Each committed
+// digest is the one GitHub records for the release asset at upload, which the
+// detect phase reads from the releases API and a reviewer can check the same
+// way. See openspec/changes/vale-grammars-package/design.md, D3.
+// ---------------------------------------------------------------------------
+
+const MANIFEST_GRAMMAR_FIELDS = [
+  "package",
+  "directory",
+  "asset",
+  "archiveMember",
+];
+
+/**
+ * A grammar name is substituted into an asset name and an archive member
+ * path, so it is restricted to a single safe path segment. Upstream's names
+ * (`csharp`, `typescript`, `tsx`) all fit.
+ */
+const GRAMMAR_NAME_PATTERN = /^[a-z\d][\w-]*$/;
+
+/** The asset-name shape that marks an upstream release asset as a grammar. */
+const GRAMMAR_ASSET_PATTERN = /^grammar-([a-z\d][\w-]*)\.zip$/;
+
+function assertGrammars(grammars, seenPackages) {
+  if (typeof grammars !== "object" || grammars === null) {
+    throw new Error("manifest.grammars is missing");
+  }
+  for (const field of MANIFEST_GRAMMAR_FIELDS) {
+    if (typeof grammars[field] !== "string" || grammars[field].length === 0) {
+      throw new Error(`manifest.grammars is missing ${field}`);
+    }
+  }
+  if (seenPackages.has(grammars.package)) {
+    throw new Error(`manifest lists ${grammars.package} more than once`);
+  }
+  // The member is never extracted onto disk (vale-prepare.cjs streams it), so
+  // a nested path is allowed here where a platform's is not. It is still held
+  // to relative, `..`-free segments, so a hand edit cannot name anything but a
+  // file inside the archive.
+  const member = applyTemplate(grammars.archiveMember, { name: "x" });
+  if (
+    member.startsWith("/") ||
+    member.split(/[/\\]/).some((segment) => segment === ".." || segment === "")
+  ) {
+    throw new Error(
+      `manifest.grammars.archiveMember is not a relative path inside the archive: ${grammars.archiveMember}`
+    );
+  }
+  if (!Array.isArray(grammars.modules) || grammars.modules.length === 0) {
+    throw new Error("manifest.grammars.modules must be a non-empty array");
+  }
+  const names = new Set();
+  for (const module_ of grammars.modules) {
+    if (!GRAMMAR_NAME_PATTERN.test(String(module_?.name ?? ""))) {
+      throw new Error(
+        `manifest grammar ${JSON.stringify(module_?.name ?? "?")} is not a valid grammar name`
+      );
+    }
+    if (!SHA256_PATTERN.test(String(module_.sha256 ?? ""))) {
+      throw new Error(
+        `manifest grammar ${module_.name} has a sha256 that is not 64 lowercase hex characters`
+      );
+    }
+    if (names.has(module_.name)) {
+      throw new Error(`manifest lists grammar ${module_.name} more than once`);
+    }
+    names.add(module_.name);
+  }
+}
+
+/**
+ * Every package the manifest releases, platform packages first, then the
+ * grammar package. The publish gate and the stamp plan iterate this rather
+ * than `platforms`, so the grammar package cannot be left out of either.
+ */
+function manifestPackages(manifest) {
+  return [
+    ...manifest.platforms.map(({ package: name, directory }) => ({
+      package: name,
+      directory,
+    })),
+    { package: manifest.grammars.package, directory: manifest.grammars.directory },
+  ];
+}
+
+/** The release asset filename for one grammar. */
+function resolveGrammarAsset(manifest, module_) {
+  return applyTemplate(manifest.grammars.asset, {
+    name: module_.name,
+    version: manifest.valeVersion,
+  });
+}
+
+/** The full download URL for one grammar's archive. */
+function resolveGrammarDownloadUrl(manifest, module_) {
+  return applyTemplate(manifest.upstream.downloadUrl, {
+    version: manifest.valeVersion,
+    asset: resolveGrammarAsset(manifest, module_),
+  });
+}
+
+/** The path of the grammar module inside its archive. */
+function resolveGrammarMember(manifest, module_) {
+  return applyTemplate(manifest.grammars.archiveMember, { name: module_.name });
+}
+
+/**
+ * The grammar modules an upstream release publishes, read from its asset
+ * list: `[{ name, sha256 }]`, sorted by name.
+ *
+ * Every `grammar-<name>.zip` asset is taken, not a chosen subset (design D2),
+ * so the manifest's list is upstream's list and nothing hand-kept can drift.
+ * An asset without a GitHub-recorded sha256 throws: carrying it with no digest
+ * would leave nothing for a reviewer to check and nothing to verify against.
+ */
+function planGrammarModules(assets, version) {
+  const modules = [];
+  for (const asset of assets ?? []) {
+    const match = GRAMMAR_ASSET_PATTERN.exec(String(asset?.name ?? ""));
+    if (!match) {
+      continue;
+    }
+    const digest = /^sha256:([\da-f]{64})$/i.exec(String(asset.digest ?? ""));
+    if (!digest) {
+      throw new Error(
+        `upstream ${version} asset ${asset.name} has no recorded sha256 digest`
+      );
+    }
+    modules.push({ name: match[1], sha256: digest[1].toLowerCase() });
+  }
+  if (modules.length === 0) {
+    throw new Error(`upstream ${version} publishes no grammar-*.zip assets`);
+  }
+  return modules.sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+/** The four bytes every WebAssembly module starts with: `\0asm`. */
+const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+
+/**
+ * Throw unless `bytes` starts like a WebAssembly module. The archive was
+ * verified against its digest before this runs; this catches a manifest whose
+ * `archiveMember` names the wrong file, which would otherwise pack a README or
+ * a symlink target into the published package.
+ */
+function assertWasmModule(bytes, label) {
+  if (
+    !Buffer.isBuffer(bytes) ||
+    bytes.length < WASM_MAGIC.length ||
+    !bytes.subarray(0, WASM_MAGIC.length).equals(WASM_MAGIC)
+  ) {
+    throw new Error(`${label} is not a WebAssembly module`);
+  }
+  return true;
 }
 
 /** Substitute `{version}` (and optionally `{asset}`) into a manifest template. */
@@ -439,7 +605,12 @@ function assertChecksum({ asset, expected, actual }) {
  * rather than silently carrying a stale digest forward, which would otherwise
  * produce a manifest that fails verification only later, inside the publish run.
  */
-function planManifestUpdate({ manifest, upstreamTag, checksumsText }) {
+function planManifestUpdate({
+  manifest,
+  upstreamTag,
+  checksumsText,
+  releaseAssets,
+}) {
   assertManifest(manifest);
   const upstreamVersion = parseReleaseTag(upstreamTag);
   if (!isUpstreamAhead(manifest.valeVersion, upstreamVersion)) {
@@ -469,11 +640,24 @@ function planManifestUpdate({ manifest, upstreamTag, checksumsText }) {
     return { ...platform, sha256 };
   });
 
+  // Grammars are re-read from the release's asset list, not carried forward:
+  // a grammar upstream added appears and one it dropped disappears, both in
+  // the pull request a human reviews.
+  const grammars = {
+    ...manifest.grammars,
+    modules: planGrammarModules(releaseAssets, upstreamVersion),
+  };
+
   return {
     update: true,
     pinnedVersion: manifest.valeVersion,
     upstreamVersion,
-    manifest: { ...manifest, valeVersion: upstreamVersion, platforms },
+    manifest: {
+      ...manifest,
+      valeVersion: upstreamVersion,
+      platforms,
+      grammars,
+    },
   };
 }
 
@@ -488,17 +672,39 @@ function planManifestUpdate({ manifest, upstreamTag, checksumsText }) {
  * disagreed about their version would make the CLI's exact pins unresolvable on
  * some hosts and resolvable on others.
  */
-function planStamp({ manifest, date }) {
+function planStamp({ manifest, date, version: requested }) {
   assertManifest(manifest);
-  const version = stampVersion(manifest.valeVersion, date);
+  const version =
+    requested === undefined
+      ? stampVersion(manifest.valeVersion, date)
+      : assertRequestedStamp(manifest, requested);
   return {
     version,
-    packages: manifest.platforms.map((platform) => ({
-      package: platform.package,
-      directory: platform.directory,
+    packages: manifestPackages(manifest).map((entry) => ({
+      ...entry,
       version,
     })),
   };
+}
+
+/**
+ * Accept an explicit stamp only when it names the manifest's Vale release.
+ *
+ * This exists for one job: publishing a package at a stamp the rest of the set
+ * already carries, as the grammar package's manual first publish does, so the
+ * CLI's `@taskless/vale-*` pins can stay at one exact version. A stamp for a
+ * different Vale release would pack this manifest's bytes under another
+ * release's name.
+ */
+function assertRequestedStamp(manifest, version) {
+  assertStampedVersion(version);
+  const [base] = version.split("-");
+  if (base !== manifest.valeVersion) {
+    throw new Error(
+      `--version ${version} does not name the manifest's Vale ${manifest.valeVersion}`
+    );
+  }
+  return version;
 }
 
 /**
@@ -523,18 +729,24 @@ module.exports = {
   assertChecksum,
   assertManifest,
   assertStampedVersion,
+  assertWasmModule,
   compareStampedVersions,
   compareValeVersions,
   formatStampTimestamp,
   isUpstreamAhead,
+  manifestPackages,
   parseChecksumsFile,
   parseReleaseTag,
   parseValeVersion,
+  planGrammarModules,
   planManifestUpdate,
   planStamp,
   rangeMatches,
   resolveAssetName,
   resolveChecksumsUrl,
   resolveDownloadUrl,
+  resolveGrammarAsset,
+  resolveGrammarDownloadUrl,
+  resolveGrammarMember,
   stampVersion,
 };
