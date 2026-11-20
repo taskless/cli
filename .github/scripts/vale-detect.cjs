@@ -169,13 +169,23 @@ async function main({
   console.log(`fetching ${checksumsUrl}`);
   const checksumsText = await text(checksumsUrl);
 
-  const plan = planManifestUpdate({ manifest, upstreamTag, checksumsText });
+  const plan = planManifestUpdate({
+    manifest,
+    upstreamTag,
+    checksumsText,
+    releaseAssets: release.assets,
+  });
   console.log(
     `Upstream ${plan.upstreamVersion} is ahead of ${plan.pinnedVersion}.`
   );
   for (const platform of plan.manifest.platforms) {
     console.log(
       `  ${applyTemplate(platform.asset, { version: plan.upstreamVersion })}  ${platform.sha256}`
+    );
+  }
+  for (const module_ of plan.manifest.grammars.modules) {
+    console.log(
+      `  ${applyTemplate(plan.manifest.grammars.asset, { name: module_.name })}  ${module_.sha256}`
     );
   }
 

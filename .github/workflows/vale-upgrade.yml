@@ -6,10 +6,10 @@
 #
 #   republish   release-vale.yml. Watches upstream Vale, proposes a manifest
 #               with new digests on `vendor/vale/republish`, and on merge
-#               publishes the six @taskless/vale-* packages at
+#               publishes the seven @taskless/vale-* packages at
 #               <valeVersion>-<stamp>. Changes nothing for a consumer.
 #
-#   upgrade     this workflow. Moves the six pins in packages/cli/package.json
+#   upgrade     this workflow. Moves every @taskless/vale-* pin in packages/cli/package.json
 #               to the published set on `vendor/vale/upgrade`. THIS is what
 #               reaches a user.
 #
@@ -73,7 +73,7 @@ on:
   # other's result.
   #
   # Starting together is also the race. release-vale.yml has to fetch, verify,
-  # pack, and publish six packages before the registry can answer "what is
+  # pack, and publish seven packages before the registry can answer "what is
   # published" with the new set, and the detect step below asks the registry.
   # Measured on 3.22.0: the manifest merged at 18:09:13Z, the publish run
   # started three seconds later, the packages were stamped 18:09:30 — and a run
@@ -160,7 +160,7 @@ jobs:
       # pins. GITHUB_TOKEN is only for the rate limit on the release-notes
       # lookup.
       #
-      # `--write` moves the six pins and `VALE_VERSION` in capabilities.ts
+      # `--write` moves every @taskless/vale-* pin and `VALE_VERSION` in capabilities.ts
       # together, the latter to the base version the binary reports. It fails
       # the run if the declaration is not found exactly once.
       #
@@ -179,7 +179,7 @@ jobs:
         if: steps.wait.outputs.ready == 'true'
 
       # Resolution, not editing. `--lockfile-only` skips linking, so nothing is
-      # downloaded and no lifecycle script runs. It fails if the six packages
+      # downloaded and no lifecycle script runs. It fails if the pinned packages
       # are not all resolvable at the new version — a second, independent check
       # on the half-published set the detect step already refuses.
       - name: Regenerate the lockfile
@@ -314,11 +314,12 @@ jobs:
           The \`@taskless/vale-*\` packages are published ahead of what
           \`@taskless/cli\` pins.
 
-          This moves all six pins from \`${PINNED_VERSION}\` to
+          This moves every \`@taskless/vale-*\` pin from \`${PINNED_VERSION}\` to
           \`${VALE_VERSION}\` — Vale **${BASE_VERSION}** — and regenerates
           \`pnpm-lock.yaml\`. The pins move **together** on purpose: the platform
           packages are selected by optional dependency, so a straggler left at
-          the old version is a different Vale on one platform than on the others.
+          the old version is a different Vale on one platform than on the others,
+          and the grammar package must match the binaries that read it.
 
           It also moves \`VALE_VERSION\` in \`capabilities.ts\` to
           \`${BASE_VERSION}\` and regenerates \`src/generated/vale-vocabulary.ts\`

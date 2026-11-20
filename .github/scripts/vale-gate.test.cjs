@@ -22,7 +22,10 @@ const MANIFEST = JSON.parse(
   readFileSync(join(__dirname, "vale-manifest.json"), "utf8")
 );
 const PINNED = MANIFEST.valeVersion;
-const PACKAGES = MANIFEST.platforms.map((platform) => platform.package);
+const PACKAGES = [
+  ...MANIFEST.platforms.map((platform) => platform.package),
+  MANIFEST.grammars.package,
+];
 
 /** A registry stub answering from a {package: [versions]} table. */
 const registry = (table) => async (packageName) => table[packageName] ?? [];
@@ -130,4 +133,30 @@ test("a 404 package reads as unpublished rather than failing the gate", async ()
   const plan = await main({ argv: [], published: registry({}) });
   assert.equal(plan.shouldPublish, true);
   assert.deepEqual(plan.missing, PACKAGES);
+});
+
+test("publishes when the binaries are out and the grammars are not", () => {
+  // Binaries without their grammars are not a published release: a CLI
+  // pinned to that set would read code comments by delimiters.
+  const table = allPublished();
+  delete table[MANIFEST.grammars.package];
+  const plan = planPublish({
+    manifest: MANIFEST,
+    publishedByPackage: table,
+    forced: false,
+  });
+  assert.equal(plan.shouldPublish, true);
+  assert.deepEqual(plan.missing, [MANIFEST.grammars.package]);
+});
+
+test("publishes when the grammars are out and a binary is not", () => {
+  const table = allPublished();
+  delete table[MANIFEST.platforms[0].package];
+  const plan = planPublish({
+    manifest: MANIFEST,
+    publishedByPackage: table,
+    forced: false,
+  });
+  assert.equal(plan.shouldPublish, true);
+  assert.deepEqual(plan.missing, [MANIFEST.platforms[0].package]);
 });

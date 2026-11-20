@@ -46,6 +46,17 @@ function checksumsFor(version) {
 }
 
 /**
+ * The release's asset list as the GitHub API returns it: every grammar the
+ * committed manifest pins, each with a recorded digest.
+ */
+function assetsFor() {
+  return MANIFEST.grammars.modules.map((module_, index) => ({
+    name: `grammar-${module_.name}.zip`,
+    digest: `sha256:${digestFor(index)}`,
+  }));
+}
+
+/**
  * Run main() with both fetches stubbed and $GITHUB_OUTPUT pointed at a temp
  * file, then return the parsed step outputs plus which URLs were fetched.
  */
@@ -55,6 +66,7 @@ async function runDetect({
   checksums,
   argv = [],
   wantNotes = false,
+  assets = assetsFor(),
 }) {
   const directory = mkdtempSync(join(tmpdir(), "vale-detect-test-"));
   const outputPath = join(directory, "github-output");
@@ -70,6 +82,7 @@ async function runDetect({
         tag: upstreamTag,
         notes,
         url: `https://github.com/${MANIFEST.upstream.repository}/releases/tag/${upstreamTag}`,
+        assets,
       }),
       text: async (url) => {
         fetched.push(url);
@@ -262,5 +275,30 @@ test("detect: a repository with no releases aborts rather than reporting current
       text: async () => "",
     }),
     /has no published releases/
+  );
+});
+
+test("detect: the grammar list and digests come from the release's assets", async () => {
+  // main() hands the release's asset list to planManifestUpdate. Withholding
+  // the grammar assets proves it reaches there: the plan refuses a release
+  // with none, rather than carrying the old list forward unreviewed.
+  await assert.rejects(
+    runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: checksumsFor("3.99.0"),
+      assets: [],
+    }),
+    /upstream 3\.99\.0 publishes no grammar-\*\.zip assets/
+  );
+});
+
+test("detect: a grammar asset with no recorded digest aborts", async () => {
+  await assert.rejects(
+    runDetect({
+      upstreamTag: "v3.99.0",
+      checksums: checksumsFor("3.99.0"),
+      assets: [{ name: "grammar-go.zip" }],
+    }),
+    /grammar-go\.zip has no recorded sha256 digest/
   );
 });

@@ -19,7 +19,8 @@
  *      anything is unpacked, so unverified bytes are never even expanded onto
  *      disk;
  *   3. unpack the single executable named by the manifest into its package
- *      directory at mode 0755;
+ *      directory at mode 0755, or, for the grammar package, read each grammar
+ *      module out of its archive into `grammars/<name>.wasm`;
  *   4. stamp every package.json with one shared version;
  *   5. `npm pack` each package into --out.
  *
@@ -30,11 +31,18 @@
  * sealed into a tarball.
  *
  * Usage:
- *   node .github/scripts/vale-prepare.cjs [--out <dir>] [--only <package>]... [--skip-pack]
+ *   node .github/scripts/vale-prepare.cjs [--out <dir>] [--only <package>]...
+ *     [--version <stamped>] [--skip-pack]
  *
  *   --out        where to write the .tgz files (default: .vale-dist at the repo root)
- *   --only       restrict to one platform package; repeatable. Accepts the full
- *                name (@taskless/vale-linux-x64) or the suffix (linux-x64).
+ *   --only       restrict to one package; repeatable. Accepts the full name
+ *                (@taskless/vale-linux-x64, @taskless/vale-grammars) or the
+ *                suffix (linux-x64, grammars).
+ *   --version    stamp with this exact version instead of one from the clock.
+ *                Its Vale component must be the manifest's. It exists for
+ *                publishing a package at a stamp the rest of the set already
+ *                carries, which is how the grammar package's first, manual
+ *                publish keeps every @taskless/vale-* pin at one version.
  *   --skip-pack  fetch, verify, unpack, and stamp, but do not run npm pack.
  *
  * Running this locally leaves the stamped version in each package.json and the
@@ -63,9 +71,13 @@ const {
   applyStamp,
   assertChecksum,
   assertManifest,
+  assertWasmModule,
   planStamp,
   resolveAssetName,
   resolveDownloadUrl,
+  resolveGrammarAsset,
+  resolveGrammarDownloadUrl,
+  resolveGrammarMember,
 } = require("./vale-release.cjs");
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
@@ -95,6 +107,9 @@ function parseArguments(argv) {
     } else if (argument === "--only") {
       index += 1;
       options.only.push(requireValue(argv, index, "--only"));
+    } else if (argument === "--version") {
+      index += 1;
+      options.version = requireValue(argv, index, "--version");
     } else if (argument === "--skip-pack") {
       options.pack = false;
     } else {
@@ -105,16 +120,14 @@ function parseArguments(argv) {
 }
 
 /** Match `--only` against either the full package name or its suffix. */
-function selects(only, platform) {
+function selects(only, entry) {
   if (only.length === 0) {
     return true;
   }
-  const suffix = platform.package.replace("@taskless/vale-", "");
+  const suffix = entry.package.replace("@taskless/vale-", "");
   return only.some(
-    (entry) =>
-      entry === platform.package ||
-      entry === suffix ||
-      entry === `vale-${suffix}`
+    (name) =>
+      name === entry.package || name === suffix || name === `vale-${suffix}`
   );
 }
 
@@ -209,6 +222,58 @@ function unpackMember(archivePath, member, destinationPath) {
   }
 }
 
+/**
+ * Read one grammar module out of a verified zip and return its bytes.
+ *
+ * `unzip -p` writes the member's contents to stdout and creates nothing on
+ * disk, so unlike `unpackMember` there is no extracted path to contain: a
+ * nested member, a `../` name, or a symlinked directory inside the archive
+ * cannot place a file anywhere. That is why the grammar member may be nested
+ * where a platform's `archiveMember` must stay flat. What remains is reading
+ * the wrong member, and `assertWasmModule` refuses anything that is not a
+ * WebAssembly module, including a symlink entry, which `-p` emits as the
+ * link's target text.
+ */
+function readGrammarMember(archivePath, member) {
+  const result = spawnSync("unzip", ["-p", archivePath, member], {
+    encoding: "buffer",
+    // The largest 3.27.0 grammar is under 6 MB; the cap is headroom, not a
+    // measurement, and exceeding it fails the run rather than truncating.
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `${basename(archivePath)} has no readable member ${member} (unzip exited ${result.status})`
+    );
+  }
+  assertWasmModule(result.stdout, `${basename(archivePath)}:${member}`);
+  return result.stdout;
+}
+
+/**
+ * Write a stamped package.json and pack the package into `out`. Shared by the
+ * platform packages and the grammar package, so both are stamped the same way.
+ */
+function stampAndPack(packageDirectory, version, options) {
+  const packageJsonPath = join(packageDirectory, "package.json");
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(applyStamp(packageJson, version), null, 2)}\n`
+  );
+  console.log(`  stamp    ${version}`);
+  if (options.pack) {
+    run(
+      "npm",
+      ["pack", "--ignore-scripts", "--pack-destination", options.out],
+      { cwd: packageDirectory }
+    );
+  }
+}
+
 function setOutput(key, value) {
   const file = process.env.GITHUB_OUTPUT;
   if (file) {
@@ -224,12 +289,18 @@ async function main() {
   const selected = manifest.platforms.filter((platform) =>
     selects(options.only, platform)
   );
-  if (selected.length === 0) {
-    throw new Error(`--only matched no platform in ${MANIFEST_PATH}`);
+  const grammarsSelected = selects(options.only, manifest.grammars);
+  if (selected.length === 0 && !grammarsSelected) {
+    throw new Error(`--only matched no package in ${MANIFEST_PATH}`);
   }
 
-  // One version for the whole set, computed once from the run's start time.
-  const plan = planStamp({ manifest, date: new Date() });
+  // One version for the whole set, computed once from the run's start time,
+  // unless --version names one the rest of the set already carries.
+  const plan = planStamp({
+    manifest,
+    date: new Date(),
+    version: options.version,
+  });
   console.log(`Vale ${manifest.valeVersion} → version ${plan.version}`);
 
   mkdirSync(options.out, { recursive: true });
@@ -258,29 +329,51 @@ async function main() {
         `  unpack   ${platform.directory}/${platform.archiveMember} (0755)`
       );
 
-      const packageJsonPath = join(packageDirectory, "package.json");
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-      writeFileSync(
-        packageJsonPath,
-        `${JSON.stringify(applyStamp(packageJson, plan.version), null, 2)}\n`
-      );
-      console.log(`  stamp    ${plan.version}`);
-
+      stampAndPack(packageDirectory, plan.version, options);
       if (options.pack) {
-        run(
-          "npm",
-          ["pack", "--ignore-scripts", "--pack-destination", options.out],
-          { cwd: packageDirectory }
-        );
         packed.push(platform.package);
+      }
+    }
+
+    if (grammarsSelected) {
+      const { grammars } = manifest;
+      const packageDirectory = join(REPO_ROOT, grammars.directory);
+      const modulesDirectory = join(packageDirectory, "grammars");
+      // Emptied first, so a grammar upstream dropped cannot survive from an
+      // earlier local run into the tarball.
+      rmSync(modulesDirectory, { recursive: true, force: true });
+      mkdirSync(modulesDirectory, { recursive: true });
+      console.log(`\n${grammars.package}`);
+
+      for (const module_ of grammars.modules) {
+        const asset = resolveGrammarAsset(manifest, module_);
+        const archivePath = join(downloadDirectory, asset);
+        const actual = await download(
+          resolveGrammarDownloadUrl(manifest, module_),
+          archivePath
+        );
+        // Fatal on mismatch, before anything is read out of the archive.
+        assertChecksum({ asset, expected: module_.sha256, actual });
+        const bytes = readGrammarMember(
+          archivePath,
+          resolveGrammarMember(manifest, module_)
+        );
+        writeFileSync(join(modulesDirectory, `${module_.name}.wasm`), bytes);
+        console.log(`  ${module_.name.padEnd(12)} sha256 ${actual}`);
+      }
+
+      stampAndPack(packageDirectory, plan.version, options);
+      if (options.pack) {
+        packed.push(grammars.package);
       }
     }
   } finally {
     rmSync(downloadDirectory, { recursive: true, force: true });
   }
 
+  const preparedCount = selected.length + (grammarsSelected ? 1 : 0);
   console.log(
-    `\nPrepared ${selected.length} package(s) at ${plan.version}` +
+    `\nPrepared ${preparedCount} package(s) at ${plan.version}` +
       (options.pack ? `; ${packed.length} tarball(s) in ${options.out}` : "")
   );
   setOutput("version", plan.version);

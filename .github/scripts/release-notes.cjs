@@ -83,6 +83,15 @@ async function fetchRelease(repository, reference) {
     tag: release.tag_name,
     notes: typeof release.body === "string" ? release.body : "",
     url: typeof release.html_url === "string" ? release.html_url : undefined,
+    // Each asset's `digest` is the `sha256:<hex>` GitHub records at upload.
+    // vale-detect.cjs pins Vale's grammar archives by it, since upstream's
+    // checksums file does not cover them.
+    assets: Array.isArray(release.assets)
+      ? release.assets.map((asset) => ({
+          name: asset?.name,
+          digest: asset?.digest ?? undefined,
+        }))
+      : [],
   };
 }
 

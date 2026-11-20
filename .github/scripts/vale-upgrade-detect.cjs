@@ -105,6 +105,13 @@ const PIN_PREFIX = "@taskless/vale-";
  * What counts as a platform pin. Used BOTH to enumerate the pins and to rewrite
  * them, so the two cannot drift apart — the trailing hyphen is the boundary
  * here, since there is no bare `@taskless/vale` package.
+ *
+ * `@taskless/vale-grammars` matches too, deliberately. Vale's grammars ship as
+ * their own package since 3.27.0 and are released with the binaries at one
+ * stamp, so the one-version rule below holds the grammar pin to the platform
+ * pins, and an upgrade waits until the grammars are published with them. It is
+ * a regular dependency rather than an optional one, which is why every
+ * dependency field is read.
  */
 const PIN_PATTERN = /^@taskless\/vale-/;
 
