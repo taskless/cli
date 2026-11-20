@@ -241,6 +241,41 @@ describe("validate checks components without requiring tests", () => {
     ]);
   });
 
+  // Vale reads a grammar from its StylesPath before the pinned grammars, and
+  // the rules tree is every assembled config's StylesPath. Presence is what is
+  // refused, so an empty directory fails exactly as a populated one does.
+  it.each([
+    ["holds a grammar", true],
+    ["is empty", false],
+  ])(
+    "refuses every Vale rule when the rules tree's config/grammars %s",
+    async (_label, populated) => {
+      await valeRule("no-simply", { config: SCOPED });
+      const grammars = join(
+        cwd,
+        ".taskless",
+        "rules",
+        "vale",
+        "config",
+        "grammars"
+      );
+      await mkdir(grammars, { recursive: true });
+      if (populated) await writeFile(join(grammars, "go.wasm"), "\0asm");
+      const result = await runCli(["validate", "-d", cwd, "--json"]);
+      expect(result.exitCode).not.toBe(0);
+      const rule = (JSON.parse(result.stdout) as Report).rules.find(
+        (entry) => entry.ruleId === "no-simply"
+      );
+      expect(rule?.ok).toBe(false);
+      expect(
+        rule?.violations.map((violation) => violation.constraintId)
+      ).toEqual(["vale-tree-no-grammars"]);
+      expect(rule?.violations[0]?.message).toContain(
+        ".taskless/rules/vale/config/grammars holds Vale grammars the CLI did not ship"
+      );
+    }
+  );
+
   // The style schema's own advisory, through the real CLI.
   // `vale-schema-contract.test.ts` holds the advisory to its rule; this says
   // it reaches `notices` on `validate` output and `--json`, beside whatever the

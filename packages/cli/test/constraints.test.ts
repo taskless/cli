@@ -285,6 +285,17 @@ const VIOLATIONS: Record<string, Scenario> = {
       ),
     names: /disables probe-rule before any matcher enables it/,
   },
+  "vale-tree-no-grammars": {
+    // A clean rule beside a grammar directory in the rules tree: the rule's
+    // own config is valid, so only the tree can be what refuses it.
+    run: async () => {
+      await mkdir(join(project, ".taskless/rules/vale/config/grammars"), {
+        recursive: true,
+      });
+      return verifyValeConfig(VALID_VALE_CONFIG);
+    },
+    names: /config\/grammars holds Vale grammars the CLI did not ship/,
+  },
 };
 
 describe("every documented constraint is a check that still fires", () => {

@@ -2682,3 +2682,30 @@ withVale("a matcher resolves against the working directory", () => {
     ]);
   });
 });
+
+withVale("Vale grammars (3.27.0 and later)", () => {
+  // Since 3.27.0 the tree-sitter grammars ship apart from the binary, and a
+  // comment-tier extension whose grammar is missing is read by its delimiters
+  // instead: directive comments become prose and one-line CSS comments are
+  // skipped, with only a W101 on stderr to say so. The binary is asked which
+  // grammar each listed extension needs, rather than keeping a mapping here,
+  // so a grammar upstream drops or renames fails this, naming the extension.
+  const document =
+    "// simply\n# simply\n/* simply */\n-- simply\n; simply\nx = 1\n";
+
+  it("resolves the pinned grammar package", () => {
+    expect(grammars, "@taskless/vale-grammars did not resolve").toBeDefined();
+  });
+
+  it.each([...VALE_COMMENT_EXTENSIONS])(
+    "has a pinned grammar for every comment-tier extension: %s",
+    (extension) => {
+      const { stderr } = lines(existence("simply"), document, `g${extension}`);
+      const missing = /grammar "([^"]+)" is not installed/.exec(stderr);
+      expect(
+        missing,
+        `${extension} needs grammar "${missing?.[1]}", which @taskless/vale-grammars does not carry`
+      ).toBeNull();
+    }
+  );
+});

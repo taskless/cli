@@ -69,9 +69,13 @@ _Alternative: copy the grammars into `<StylesPath>/config/grammars/` at assembly
 
 The vendor contract runs every comment-tier extension in `VALE_FORMAT_TIERS` through the pinned binary with the pinned grammars. It fails on any `grammar "<name>" is not installed` warning, naming the extension and the grammar. The binary is the authority on which grammar an extension needs, so the test asks it rather than keeping a mapping. The six cases failing on #703 stay as they are, and pass again once the grammars are present.
 
-### D7. The rules-tree grammar directory is refused at assembly
+### D7. One check for the rules-tree grammar directory, called by `validate` and by assembly
 
-`assembleValeConfig` checks for `<rules tree>/config/grammars/` before writing anything. When it exists, the result is a refusal naming the directory. That refusal is a tree-level entry beside the existing per-rule ones, reported the same way, so `validate` and `check` both refuse through the code they already share. Its presence is refused, not its contents, because an empty directory today becomes a populated one after the next `vale sync`, and an unvetted grammar would win over ours for that language. The rest of `config/` (vocabularies, for example) is not touched by this change.
+`validate` and `check` do not share an assembly path: `validate` judges one rule at a time in `inspect.ts`, while `check` refuses through `assembleValeConfig`. So the check is one function, `valeTreeGrammarsViolation`, that both call, under a new constraint `vale-tree-no-grammars` in the published constraint table. `validate` reports it against every Vale rule, since the tree is every rule's StylesPath. Assembly returns a refusal carrying it as a tree-level rejection beside the per-rule ones, and `check` reports it as the Vale engine's failure, with other engines still running.
+
+Its presence is refused, not its contents, because an empty directory today becomes a populated one after the next `vale sync`, and an unvetted grammar would win over ours for that language. The rest of `config/` (vocabularies, for example) is not touched by this change.
+
+The same reasoning covers the environment. `VALE_GRAMMARS_PATH` is always replaced in the child environment, never inherited, because a value from the user's shell is also a grammar directory nobody pinned. When the grammar package does not resolve, the variable is dropped rather than inherited.
 
 ## Risks / Trade-offs
 

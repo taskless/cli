@@ -56,12 +56,17 @@ import { resolvePlatformBinary } from "../src/rules/platform-binary";
 const manifest = JSON.parse(
   readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8")
 ) as {
+  dependencies?: Record<string, string>;
   optionalDependencies: Record<string, string>;
   devDependencies?: Record<string, string>;
 };
 
-/** Every dependency field a pin can live in, merged. */
+/**
+ * Every dependency field a pin can live in, merged. `dependencies` is one: the
+ * Vale grammar package is a regular dependency, since every host needs it.
+ */
 const allPins: Record<string, string> = {
+  ...manifest.dependencies,
   ...manifest.devDependencies,
   ...manifest.optionalDependencies,
 };
@@ -96,8 +101,17 @@ describe("the published engine versions agree with their pins", () => {
   });
 
   it("vale's constant is the version its platform packages pin, before our build stamp", () => {
+    // The grammar package is read by the binary, so it is held to the same
+    // exact pin: the family check below would pass vacuously without it.
+    expect(
+      allPins["@taskless/vale-grammars"],
+      "@taskless/vale-grammars is not pinned"
+    ).toBeDefined();
     const pinned = pinnedVersions("@taskless/vale");
-    expect(pinned.length, "platform packages disagree on a version").toBe(1);
+    expect(
+      pinned.length,
+      "the platform packages and the grammar package disagree on a version"
+    ).toBe(1);
 
     // Ours to repackage, so the pin carries a build stamp the upstream version
     // does not: `3.20.0` is what Vale reports, `3.20.0-<stamp>` is the npm
