@@ -6,7 +6,7 @@
  * vale-manifest.json (plus explicit dispatch). That `paths:` filter cannot see
  * WHY the file changed: correcting a typo in its comment block, reformatting
  * it, or fixing a digest all look identical to a version bump, and each one
- * would publish six fresh packages. Publishing is not idempotent here — every
+ * would publish seven fresh packages. Publishing is not idempotent here — every
  * run stamps <valeVersion>-<yyyymmddhhmmss>, a version npm has never seen — so
  * nothing downstream can absorb the mistake.
  *
@@ -19,9 +19,10 @@
  *
  * WHAT IT DELIBERATELY DOES NOT DO. It never suppresses an explicit dispatch:
  * a human asking for a publish gets one, stamp collision or not. And it skips
- * only when ALL six packages already carry the pinned base version. Checking a
- * single package would silently skip a half-published set, so requiring all six
- * makes the gate double as partial-release repair — it re-runs precisely the
+ * only when ALL seven packages (the six platform packages and the grammar
+ * package) already carry the pinned base version. Checking a single package
+ * would silently skip a half-published set, so requiring all seven makes the
+ * gate double as partial-release repair — it re-runs precisely the
  * case the publish loop's failure aggregation is there to report.
  *
  * Usage:
@@ -116,9 +117,9 @@ async function main({
     JSON.parse(readFileSync(MANIFEST_PATH, "utf8"))
   );
 
-  // Concurrent, not sequential: the six lookups are independent, and this job
+  // Concurrent, not sequential: the seven lookups are independent, and this job
   // exists to decide cheaply BEFORE prepare downloads ~60 MB. Sequential awaits
-  // would make the gate six round trips deep for no reason.
+  // would make the gate seven round trips deep for no reason.
   const packages = manifestPackages(manifest);
   const publishedByPackage = Object.fromEntries(
     await Promise.all(
