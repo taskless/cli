@@ -31,6 +31,11 @@ export const VALE_TREE_GRAMMARS = [
  * over the pinned one for that language. Shared by `validate`, which reports
  * it against every Vale rule, and by assembly, which refuses the `check` run,
  * so the two cannot disagree about what they found.
+ *
+ * That includes a project with no Vale rules at all. `validate` then still
+ * has one directory to judge, `config/` itself, which `listRuleIds` reports
+ * like any other, so it fails on this check exactly where `check` refuses.
+ * `validate-verify-commands.test.ts` pins that case.
  */
 export async function valeTreeGrammarsViolation(
   cwd: string
@@ -41,8 +46,8 @@ export async function valeTreeGrammarsViolation(
   return {
     constraintId: "vale-tree-no-grammars",
     message:
-      `${VALE_TREE_GRAMMARS} holds Vale grammars the CLI did not ship. Vale ` +
-      `would read them before the pinned grammars, so they are refused. ` +
-      `Remove the directory.`,
+      `${VALE_TREE_GRAMMARS} exists. Vale would read any grammar placed ` +
+      `there before the pinned grammars, so the directory is refused even ` +
+      `when empty. Remove it.`,
   };
 }
