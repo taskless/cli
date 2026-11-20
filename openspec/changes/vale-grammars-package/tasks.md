@@ -38,8 +38,8 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 7. Release notes (PR B)
 
-- [ ] 7.1 Add the Vale 3.27.0 entry to the `update` ledger in `src/agent/update.md`, stating that behavior is unchanged and that a `.taskless/rules/vale/config/grammars/` directory is now refused; verify the reconcile-marker and prompt parity tests pass.
-- [ ] 7.2 Grow `.changeset/vale-3-27-0.md` (patch) to say the grammars ship as their own package and an unvetted grammar directory in the rules tree is refused; verify the `Changeset` check stays green.
+- [x] 7.1 Add the Vale 3.27.0 entry to the `update` ledger in `src/agent/update.md`, stating that behavior is unchanged and that a `.taskless/rules/vale/config/grammars/` directory is now refused; verify the reconcile-marker and prompt parity tests pass.
+- [x] 7.2 Grow `.changeset/vale-3-27-0.md` (patch) to say the grammars ship as their own package and an unvetted grammar directory in the rules tree is refused; verify the `Changeset` check stays green.
 
 ## 8. PR B checks and archive
 

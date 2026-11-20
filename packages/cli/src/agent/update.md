@@ -727,6 +727,23 @@ findings disappear and a project vocabulary entry that existed only
 for such a word is now redundant. Leave it; it does no harm.
 
 <!-- on-demand -->
+## Migrating to 0.13.8
+
+Vale moves from 3.26.0 to 3.27.0. Nothing here needs work by hand,
+and no rule reports anything different.
+
+Vale 3.27.0 ships the grammars it uses to read comments in source code
+apart from its binary. The CLI now installs them as
+`@taskless/vale-grammars`, pinned with Vale, and hands them to every
+run. Rules over code files behave exactly as they did on 3.26.0.
+
+**One thing is now refused: a `config/grammars/` directory inside
+`.taskless/rules/vale/`.** Vale would read grammars there ahead of the
+pinned ones, so `validate` and `check` fail while it exists. It only
+appears if someone ran `vale sync` against an assembled config. Delete
+the directory. Nothing in this project needs it.
+
+<!-- on-demand -->
 ## Errors
 
 With `--json`, `--rules` failures emit `{ ok: false, code, message }`:
