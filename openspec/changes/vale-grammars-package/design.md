@@ -37,17 +37,23 @@ The package carries all of upstream's grammars for the release, not the 20 the c
 
 _Alternative: ship only the probed subset._ It is smaller by about 7%, but it adds a table that has to be re-derived on every bump and that only fails after it is already wrong.
 
-### D3. Digests are recorded at detect time and reviewed, since upstream does not sign them
+### D3. Digests come from GitHub's record of each release asset, and are reviewed
 
-The manifest gains a `grammars` section: the package name and directory, the asset template `grammar-{name}.zip`, the archive member `styles/config/grammars/{name}.wasm`, and one `{ name, sha256 }` entry per grammar. `vale-detect.cjs` already runs without credentials. When upstream moves, it lists the release's `grammar-*.zip` assets, downloads each one, hashes it, and writes the list and digests into the manifest pull request. A human approves those digests exactly as they approve the binary digests. `vale-prepare.cjs` then verifies each archive against the committed digest before unzipping, and extracts only the named member, flattened to `grammars/<name>.wasm`.
+The manifest gains a `grammars` section: the package name and directory, the asset template `grammar-{name}.zip`, the archive member `grammar-{name}/styles/config/grammars/{name}.wasm`, and one `{ name, sha256 }` entry per grammar, sorted by name. When upstream moves, `vale-detect.cjs` reads the release's asset list from the GitHub releases API. That list carries a `digest` (`sha256:<hex>`) for each asset, recorded by GitHub when upstream uploaded it. Detect takes every `grammar-*.zip` asset and its digest into the manifest pull request, and refuses an asset with no recorded digest. A human approves those digests exactly as they approve the binary digests.
 
-This is trust-on-first-sight for the grammars, where the binaries are cross-checked against upstream's own checksums file. The review gate is the same; what is weaker is that a reviewer cannot compare the grammar digests with anything upstream published. That is the best upstream allows today, and it is stated in the manifest comment.
+Upstream's checksums file does not cover the grammar archives, so GitHub's record is the independent source here. It is not upstream's signature, but it is not a digest of our own download either: anyone can read it back from the API. All 22 digests for 3.27.0 matched a local download when this was written.
 
-### D4. One stamp, one gate, one upgrade
+`vale-prepare.cjs` verifies each archive against the committed digest before reading anything out of it. It then streams the single named member to stdout with `unzip -p` rather than extracting it, so no archive path ever reaches the filesystem. That is why the grammar member may be nested, where a platform's `archiveMember` must stay a flat filename. The bytes must start with the WebAssembly magic (`\0asm`), which catches a member template that names the wrong file. Each module is written to `grammars/<name>.wasm`.
 
-`vale-prepare.cjs` emits the grammar tarball beside the six platform tarballs, at the same stamp, and the existing publish loop publishes all seven. `vale-gate.cjs` reports "already published" only when the platform packages and the grammar package both have a version for the pinned Vale release. `vale-upgrade-detect.cjs` and `vale-upgrade-wait.cjs` treat the grammar package as a seventh member of the set: the upgrade pull request is opened only when all seven are published, and it moves all seven pins together.
+### D4. One exact stamp, one gate, one upgrade
 
-The CLI takes the grammar package as a regular dependency at an exact version, not an optional one, because there is no host that should go without it. `engine-version-consistency` asserts that the grammar pin's Vale component equals `VALE_VERSION` and the binary pins' Vale component. It does not require equal stamps: the manual first publish (Migration, step 2) stamps the grammar package once on its own.
+`vale-prepare.cjs` emits the grammar tarball beside the six platform tarballs, at the same stamp, and the existing publish loop publishes all seven. `vale-gate.cjs` reports "already published" only when the platform packages and the grammar package both have a version for the pinned Vale release.
+
+`vale-upgrade-detect.cjs` already requires every `@taskless/vale-*` pin in the CLI, and the latest published version of each, to be one exact stamped version. The grammar package matches that prefix, so once the CLI pins it, it is a seventh member of that set with no script change. The upgrade pull request is then opened only when all seven are published at one version, and it moves all seven pins together. `vale-upgrade-wait.cjs` asks the same question through `vale-upgrade-detect.cjs --json`.
+
+That invariant is kept, not relaxed, which shapes the bootstrap. The binaries for 3.27.0 are already published at `3.27.0-20261117230017`, so the grammar package's manual first publish must carry that same stamp. `vale-prepare.cjs` takes `--version <stamped>` for this, and refuses a stamp whose Vale component is not the manifest's. Every later release stamps all seven in one run.
+
+The CLI takes the grammar package as a regular dependency at an exact version, not an optional one, because there is no host that should go without it.
 
 ### D5. `VALE_GRAMMARS_PATH` is set at the single spawn site, from a resolver beside `findValeBinary`
 
@@ -78,12 +84,8 @@ The vendor contract runs every comment-tier extension in `VALE_FORMAT_TIERS` thr
 ## Migration Plan
 
 1. **PR A** (bottom, to `main`): this change's artifacts, the manifest `grammars` section for 3.27.0 with digests computed from upstream's current assets, `packages/vale-grammars/` metadata, and the detect, prepare, gate and upgrade script changes with their tests. It changes no CLI behavior and carries no changeset.
-2. **Manual, before merging PR A**: a maintainer runs `vale-prepare.cjs` on PR A's branch, publishes the `@taskless/vale-grammars` tarball by hand with `--tag latest`, and registers its npm trusted publisher against `release-vale.yml` and the `npm-autopublish` environment.
-3. Merge PR A. The gate finds 3.27.0 published for all seven packages and publishes nothing. `vale-upgrade.yml` rewrites #703 to include the grammar pin.
+2. **Manual, before merging PR A**: a maintainer runs `node .github/scripts/vale-prepare.cjs --only grammars --version 3.27.0-20261117230017` on PR A's branch, publishes the resulting `@taskless/vale-grammars` tarball by hand with `npm publish --access public --tag latest`, and registers its npm trusted publisher against `release-vale.yml` and the `npm-autopublish` environment.
+3. Merge PR A. The gate finds 3.27.0 published for all seven packages and publishes nothing. The CLI does not pin the grammar package yet, so `vale-upgrade.yml` still sees six pins.
 4. **PR B**, cut from #703's head and targeting `main`: the grammar dependency pin, the resolver and `VALE_GRAMMARS_PATH`, the runtime export, the D7 refusal, the D6 coverage check, the `update` ledger entry, and the grown `vale-3-27-0` changeset (patch). It archives this change. #703 is closed with "Superseded by #<B>" once PR B lands.
 
 Rollback: revert PR B. The 3.26.0 pins come back and the grammar package becomes inert, since nothing pins it. PR A can stay.
-
-## Open Questions
-
-- Whether `vale-upgrade.yml`'s rolling branch rewrites #703 after step 3 or opens a fresh pull request. Either way, PR B is cut from whichever head carries the seven pins.

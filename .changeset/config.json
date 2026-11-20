@@ -10,6 +10,7 @@
   "ignore": [
     "@taskless/vale-darwin-arm64",
     "@taskless/vale-darwin-x64",
+    "@taskless/vale-grammars",
     "@taskless/vale-linux-arm64",
     "@taskless/vale-linux-x64",
     "@taskless/vale-win32-arm64",

@@ -12,19 +12,25 @@ const {
   assertChecksum,
   assertManifest,
   assertStampedVersion,
+  assertWasmModule,
   compareStampedVersions,
   compareValeVersions,
   formatStampTimestamp,
   isUpstreamAhead,
+  manifestPackages,
   parseChecksumsFile,
   parseReleaseTag,
   parseValeVersion,
+  planGrammarModules,
   planManifestUpdate,
   planStamp,
   rangeMatches,
   resolveAssetName,
   resolveChecksumsUrl,
   resolveDownloadUrl,
+  resolveGrammarAsset,
+  resolveGrammarDownloadUrl,
+  resolveGrammarMember,
   stampVersion,
 } = require("./vale-release.cjs");
 
@@ -66,7 +72,26 @@ function fixtureManifest() {
         sha256: DIGEST_B,
       },
     ],
+    grammars: {
+      package: "@taskless/vale-grammars",
+      directory: "packages/vale-grammars",
+      asset: "grammar-{name}.zip",
+      archiveMember: "grammar-{name}/styles/config/grammars/{name}.wasm",
+      modules: [
+        { name: "go", sha256: DIGEST_A },
+        { name: "python", sha256: DIGEST_B },
+      ],
+    },
   };
+}
+
+/** Release assets as the GitHub releases API lists them for a new upstream. */
+function releaseAssets(version) {
+  return [
+    { name: `vale_${version}_Linux_64-bit.tar.gz`, digest: `sha256:${DIGEST_B}` },
+    { name: "grammar-rust.zip", digest: `sha256:${DIGEST_A}` },
+    { name: "grammar-go.zip", digest: `sha256:${DIGEST_B}` },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -243,14 +268,14 @@ test("planStamp: the whole set shares one version", () => {
     plan.version,
     `${COMMITTED_MANIFEST.valeVersion}-20260806120000`
   );
-  assert.equal(plan.packages.length, 6);
+  assert.equal(plan.packages.length, 7);
   assert.equal(new Set(plan.packages.map((p) => p.version)).size, 1);
   for (const entry of plan.packages) {
     assert.equal(entry.version, plan.version);
   }
 });
 
-test("planStamp: covers every committed platform package", () => {
+test("planStamp: covers every committed platform package and the grammar package", () => {
   const plan = planStamp({
     manifest: COMMITTED_MANIFEST,
     date: new Date("2026-08-06T12:00:00Z"),
@@ -258,6 +283,7 @@ test("planStamp: covers every committed platform package", () => {
   assert.deepEqual(plan.packages.map((p) => p.package).sort(), [
     "@taskless/vale-darwin-arm64",
     "@taskless/vale-darwin-x64",
+    "@taskless/vale-grammars",
     "@taskless/vale-linux-arm64",
     "@taskless/vale-linux-x64",
     "@taskless/vale-win32-arm64",
@@ -438,6 +464,7 @@ test("planManifestUpdate: a newer upstream rewrites version and digests only", (
       `${DIGEST_B}  vale_3.18.0_Linux_64-bit.tar.gz`,
       `${DIGEST_A}  vale_3.18.0_Windows_64-bit.zip`,
     ].join("\n"),
+    releaseAssets: releaseAssets("3.18.0"),
   });
   assert.equal(result.update, true);
   assert.equal(result.pinnedVersion, "3.17.1");
@@ -478,4 +505,152 @@ test("planManifestUpdate: an unparseable checksums file aborts", () => {
       }),
     /parsed to no entries/
   );
+});
+
+// ---------------------------------------------------------------------------
+// Grammars (openspec/changes/vale-grammars-package)
+// ---------------------------------------------------------------------------
+
+test("assertManifest: the committed manifest pins every grammar with a digest", () => {
+  const { grammars } = COMMITTED_MANIFEST;
+  assert.equal(grammars.package, "@taskless/vale-grammars");
+  assert.equal(grammars.directory, "packages/vale-grammars");
+  assert.ok(grammars.modules.length > 0);
+  // Sorted, so a detect rewrite produces a minimal, reviewable diff.
+  const names = grammars.modules.map((module_) => module_.name);
+  assert.deepEqual(names, names.toSorted());
+});
+
+test("assertManifest: rejects a malformed grammars section", () => {
+  const missing = fixtureManifest();
+  delete missing.grammars;
+  assert.throws(() => assertManifest(missing), /manifest\.grammars is missing/);
+
+  const noAsset = fixtureManifest();
+  delete noAsset.grammars.asset;
+  assert.throws(() => assertManifest(noAsset), /grammars is missing asset/);
+
+  const empty = fixtureManifest();
+  empty.grammars.modules = [];
+  assert.throws(() => assertManifest(empty), /non-empty array/);
+
+  const badDigest = fixtureManifest();
+  badDigest.grammars.modules[0].sha256 = "nope";
+  assert.throws(() => assertManifest(badDigest), /64 lowercase hex/);
+
+  const duplicate = fixtureManifest();
+  duplicate.grammars.modules[1].name = "go";
+  assert.throws(() => assertManifest(duplicate), /grammar go more than once/);
+
+  const sharedPackage = fixtureManifest();
+  sharedPackage.grammars.package = sharedPackage.platforms[0].package;
+  assert.throws(() => assertManifest(sharedPackage), /more than once/);
+});
+
+test("assertManifest: a grammar name and member cannot leave the archive", () => {
+  // The name is substituted into the member path, so it is held to one safe
+  // segment; the member template is held to relative, `..`-free segments.
+  for (const name of ["../go", "go/x", "", "Go"]) {
+    const bad = fixtureManifest();
+    bad.grammars.modules[0].name = name;
+    assert.throws(() => assertManifest(bad), /not a valid grammar name/);
+  }
+  for (const member of ["/abs/{name}.wasm", "../{name}.wasm", "a//{name}.wasm"]) {
+    const bad = fixtureManifest();
+    bad.grammars.archiveMember = member;
+    assert.throws(() => assertManifest(bad), /not a relative path/);
+  }
+});
+
+test("manifestPackages: the platform packages, then the grammar package", () => {
+  assert.deepEqual(manifestPackages(fixtureManifest()), [
+    { package: "@taskless/vale-linux-x64", directory: "packages/vale-linux-x64" },
+    { package: "@taskless/vale-win32-x64", directory: "packages/vale-win32-x64" },
+    { package: "@taskless/vale-grammars", directory: "packages/vale-grammars" },
+  ]);
+});
+
+test("resolveGrammar*: templates expand per grammar", () => {
+  const manifest = fixtureManifest();
+  const [go] = manifest.grammars.modules;
+  assert.equal(resolveGrammarAsset(manifest, go), "grammar-go.zip");
+  assert.equal(
+    resolveGrammarDownloadUrl(manifest, go),
+    "https://github.com/errata-ai/vale/releases/download/v3.17.1/grammar-go.zip"
+  );
+  assert.equal(
+    resolveGrammarMember(manifest, go),
+    "grammar-go/styles/config/grammars/go.wasm"
+  );
+});
+
+test("planGrammarModules: takes every grammar asset, sorted, with GitHub's digest", () => {
+  assert.deepEqual(planGrammarModules(releaseAssets("3.18.0"), "3.18.0"), [
+    { name: "go", sha256: DIGEST_B },
+    { name: "rust", sha256: DIGEST_A },
+  ]);
+});
+
+test("planGrammarModules: an asset without a recorded digest aborts", () => {
+  assert.throws(
+    () =>
+      planGrammarModules([{ name: "grammar-go.zip", digest: null }], "3.18.0"),
+    /grammar-go\.zip has no recorded sha256/
+  );
+});
+
+test("planGrammarModules: a release with no grammar assets aborts", () => {
+  assert.throws(
+    () => planGrammarModules([{ name: "vale_3.18.0_checksums.txt" }], "3.18.0"),
+    /publishes no grammar-\*\.zip assets/
+  );
+});
+
+test("planManifestUpdate: a newer upstream re-reads the grammar list", () => {
+  // python is dropped and rust added, exactly as upstream's assets say.
+  const result = planManifestUpdate({
+    manifest: fixtureManifest(),
+    upstreamTag: "v3.18.0",
+    checksumsText: [
+      `${DIGEST_B}  vale_3.18.0_Linux_64-bit.tar.gz`,
+      `${DIGEST_A}  vale_3.18.0_Windows_64-bit.zip`,
+    ].join("\n"),
+    releaseAssets: releaseAssets("3.18.0"),
+  });
+  assert.deepEqual(
+    result.manifest.grammars.modules.map((module_) => module_.name),
+    ["go", "rust"]
+  );
+  assert.equal(result.manifest.grammars.asset, "grammar-{name}.zip");
+  assert.doesNotThrow(() => assertManifest(result.manifest));
+});
+
+test("planStamp: an explicit stamp must name the manifest's Vale release", () => {
+  const plan = planStamp({
+    manifest: fixtureManifest(),
+    version: "3.17.1-20261117230017",
+  });
+  assert.equal(plan.version, "3.17.1-20261117230017");
+  assert.ok(plan.packages.every((entry) => entry.version === plan.version));
+  assert.throws(
+    () =>
+      planStamp({ manifest: fixtureManifest(), version: "3.18.0-20261117230017" }),
+    /does not name the manifest's Vale 3\.17\.1/
+  );
+  assert.throws(
+    () => planStamp({ manifest: fixtureManifest(), version: "3.17.1" }),
+    /stamped/
+  );
+});
+
+test("assertWasmModule: accepts the wasm magic, rejects anything else", () => {
+  assert.equal(
+    assertWasmModule(Buffer.from([0x00, 0x61, 0x73, 0x6d, 1, 0, 0, 0]), "go"),
+    true
+  );
+  assert.throws(
+    () => assertWasmModule(Buffer.from("../../etc/passwd"), "go"),
+    /go is not a WebAssembly module/
+  );
+  assert.throws(() => assertWasmModule(Buffer.alloc(0), "go"), /not a WebAssembly/);
 });

@@ -1,0 +1,17 @@
+{
+  "name": "@taskless/vale-grammars",
+  "description": "Vale's tree-sitter grammar modules, packaged for @taskless/cli",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taskless/cli.git",
+    "directory": "packages/vale-grammars"
+  },
+  "files": [
+    "grammars"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
