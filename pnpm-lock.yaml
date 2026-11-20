@@ -186,6 +186,8 @@ importers:
 
   packages/vale-darwin-x64: {}
 
+  packages/vale-grammars: {}
+
   packages/vale-linux-arm64: {}
 
   packages/vale-linux-x64: {}

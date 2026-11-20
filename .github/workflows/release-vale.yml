@@ -12,10 +12,12 @@
 #   detect   Runs on a schedule with NO npm credential and NO OIDC identity. It
 #            compares the latest upstream Vale release against the version
 #            pinned in .github/scripts/vale-manifest.json. When upstream is
-#            ahead it opens a pull request that updates the pinned version and
-#            all six SHA256 digests, taken from upstream's own checksums file,
-#            and carries upstream's release notes so a reviewer can see what the
-#            digests are for. It publishes nothing.
+#            ahead it opens a pull request that updates the pinned version, the
+#            six binary SHA256 digests taken from upstream's own checksums file,
+#            and one digest per grammar archive taken from GitHub's record of
+#            each release asset (upstream's checksums file does not cover
+#            those). It carries upstream's release notes so a reviewer can see
+#            what the digests are for. It publishes nothing.
 #
 #            That pull request lives on ONE ROLLING BRANCH,
 #            `vendor/vale/republish`, rebuilt and retitled as upstream moves
@@ -53,7 +55,7 @@
 # or any 3.17.1-* stamp, which is exactly the set this workflow can mint for it.
 # `gate` runs that check, because the push trigger below fires on ANY edit to
 # vale-manifest.json and a `paths:` filter cannot see why the file changed — a
-# reworded comment would otherwise publish six packages. An explicit dispatch
+# reworded comment would otherwise publish seven packages. An explicit dispatch
 # passes --force and is never suppressed.
 #
 # WHY prepare AND publish ARE SEPARATE JOBS: `prepare` downloads third-party
@@ -74,10 +76,13 @@
 # short-lived OIDC-minted token, with no stored NPM_TOKEN anywhere. That binding
 # is registered PER PACKAGE on npmjs.com, and it names this workflow's FILENAME
 # and its environment — so renaming this file or changing `environment:` below
-# breaks every publish until the six bindings are re-registered to match. There
-# is nothing to bind until the package name exists, so the FIRST publish of each
-# of the six names is a deliberate one-time manual step by a maintainer, who
-# then registers the trusted publisher. This workflow assumes that has already
+# breaks every publish until the seven bindings are re-registered to match.
+# There is nothing to bind until the package name exists, so the FIRST publish
+# of each of the seven names (the six platform packages and
+# @taskless/vale-grammars) is a deliberate one-time manual step by a maintainer,
+# who then registers the trusted publisher. For a name added to an existing set,
+# that publish takes the set's current stamp (vale-prepare.cjs --version), so
+# every @taskless/vale-* pin can stay at one version. This workflow assumes that has already
 # happened for every name in the manifest, and there is no fallback token path
 # here on purpose.
 #
@@ -85,7 +90,7 @@
 # reviewer — unlike `npm-production`, where @taskless/cli still waits for a
 # click. That is not a relaxation, because the review already happened
 # somewhere better: the manifest-update pull request IS the gate. A human reads
-# the upstream Vale version and all six SHA256 digests there, and only merging
+# the upstream Vale version and every SHA256 digest there, and only merging
 # it can start a publish at all. An environment approval would be a second copy
 # of that same gate, asked at a point where nothing is left to decide — the
 # bytes were fixed when the digests were reviewed, and a reviewer standing at
@@ -171,7 +176,7 @@ jobs:
       # `--notes-out` writes upstream's release notes for the proposed version
       # to a file, which the next step appends to the pull request body. A
       # reviewer's job here is to decide whether these bytes should be
-      # publishable, and a bare version number with six digests does not say
+      # publishable, and a bare version number with a list of digests does not say
       # whether the release is a security fix or a docs pass. The notes arrive
       # as a FILE rather than a step output because they are third-party
       # Markdown: a $GITHUB_OUTPUT line is delimited text that a release body
@@ -217,8 +222,12 @@ jobs:
           Upstream Vale is ahead of the version this repository packages.
 
           This updates `.github/scripts/vale-manifest.json` to the new upstream
-          version and replaces every platform's SHA256 with the digest from
-          upstream's `vale_<version>_checksums.txt`.
+          version, replaces every platform's SHA256 with the digest from
+          upstream's `vale_<version>_checksums.txt`, and rewrites the grammar
+          list and digests from the release's `grammar-*.zip` assets. Upstream's
+          checksums file does not cover those archives, so each grammar digest
+          is the one GitHub records for the asset, which you can read back from
+          the releases API.
 
           **Reviewing this is the trust boundary.** Merging it authorizes the
           publish phase to download those exact archives and package them; a
@@ -261,7 +270,7 @@ jobs:
   # Is there anything to publish? The push trigger fires on ANY edit to
   # vale-manifest.json — a reworded comment, a reformat, a digest correction —
   # and it cannot tell those from a version bump. Without this gate each of them
-  # publishes six packages at a fresh <valeVersion>-<timestamp> stamp, which
+  # publishes seven packages at a fresh <valeVersion>-<timestamp> stamp, which
   # nothing downstream can absorb because every stamp is novel by construction.
   #
   # Cheap on purpose: it reads the registry and decides BEFORE `prepare`
@@ -320,7 +329,7 @@ jobs:
       # dot-prefixed. upload-artifact has excluded hidden files by default since
       # v4.4, and a leading-dot DIRECTORY makes everything beneath it hidden —
       # so `.vale-dist/*.tgz` silently matched nothing even though `prepare`
-      # had just written six tarballs there. `if-no-files-found: error` is what
+      # had just written its tarballs there. `if-no-files-found: error` is what
       # turned that into a failed run rather than an empty artifact handed to
       # the publish job; keep both.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -364,7 +373,7 @@ jobs:
     # publisher for each @taskless/vale-* package is bound. Reviewer-free by
     # design (see APPROVAL POLICY in the header): the manifest pull request is
     # the gate, and this environment's branch policy still confines the
-    # credential to `main`. Changing this name requires re-registering all six
+    # credential to `main`. Changing this name requires re-registering all seven
     # bindings on npmjs.com first — the environment is part of the binding.
     environment: npm-autopublish
     permissions:
@@ -403,7 +412,7 @@ jobs:
       # these are not preview builds, they are the only builds, and the
       # prerelease component exists to defeat range matching, not to signal
       # instability.
-      - name: Publish every platform tarball
+      - name: Publish every tarball
         working-directory: tarballs
         env:
           STAMPED_VERSION: ${{ needs.prepare.outputs.version }}
@@ -417,11 +426,11 @@ jobs:
           echo "Publishing ${#tarballs[@]} package(s) at ${STAMPED_VERSION}."
 
           # The loop deliberately does not stop at the first failure, and the
-          # step deliberately does not lean on `set -e` here. Six sequential
-          # publishes are six chances for a transient registry error, and
+          # step deliberately does not lean on `set -e` here. Seven sequential
+          # publishes are seven chances for a transient registry error, and
           # aborting midway leaves the set partially released — some platforms
           # resolvable at this version, others not, which is the one state the
-          # CLI's exact cross-package pins cannot tolerate. Attempting all six
+          # CLI's exact cross-package pins cannot tolerate. Attempting all seven
           # and failing at the end means one re-run has at most the stragglers
           # left to do.
           #

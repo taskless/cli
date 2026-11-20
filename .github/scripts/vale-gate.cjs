@@ -35,7 +35,7 @@
 const { appendFileSync, readFileSync } = require("node:fs");
 const { join } = require("node:path");
 
-const { assertManifest } = require("./vale-release.cjs");
+const { assertManifest, manifestPackages } = require("./vale-release.cjs");
 
 const MANIFEST_PATH = join(__dirname, "vale-manifest.json");
 const REGISTRY = "https://registry.npmjs.org";
@@ -85,15 +85,17 @@ async function fetchPublishedVersions(packageName) {
  * forced, nothing published, everything published, and a partial set.
  */
 function planPublish({ manifest, publishedByPackage, forced }) {
-  const missing = manifest.platforms
+  // Every package the manifest releases, the grammar package included: binaries
+  // published without their grammars are not a published release.
+  const missing = manifestPackages(manifest)
     .filter(
-      (platform) =>
+      (entry) =>
         !coversVersion(
-          publishedByPackage[platform.package] ?? [],
+          publishedByPackage[entry.package] ?? [],
           manifest.valeVersion
         )
     )
-    .map((platform) => platform.package);
+    .map((entry) => entry.package);
 
   if (forced) {
     return { shouldPublish: true, missing, reason: "forced" };
@@ -117,11 +119,12 @@ async function main({
   // Concurrent, not sequential: the six lookups are independent, and this job
   // exists to decide cheaply BEFORE prepare downloads ~60 MB. Sequential awaits
   // would make the gate six round trips deep for no reason.
+  const packages = manifestPackages(manifest);
   const publishedByPackage = Object.fromEntries(
     await Promise.all(
-      manifest.platforms.map(async (platform) => [
-        platform.package,
-        await published(platform.package),
+      packages.map(async (entry) => [
+        entry.package,
+        await published(entry.package),
       ])
     )
   );
@@ -129,20 +132,18 @@ async function main({
   const plan = planPublish({ manifest, publishedByPackage, forced });
 
   console.log(`Vale ${manifest.valeVersion}`);
-  for (const platform of manifest.platforms) {
-    const covered = !plan.missing.includes(platform.package);
-    console.log(
-      `  ${covered ? "published" : "MISSING  "}  ${platform.package}`
-    );
+  for (const entry of packages) {
+    const covered = !plan.missing.includes(entry.package);
+    console.log(`  ${covered ? "published" : "MISSING  "}  ${entry.package}`);
   }
 
   if (plan.reason === "forced") {
     console.log(
-      `\nExplicitly dispatched — publishing regardless (${plan.missing.length} of ${manifest.platforms.length} not yet on the registry).`
+      `\nExplicitly dispatched — publishing regardless (${plan.missing.length} of ${packages.length} not yet on the registry).`
     );
   } else if (plan.shouldPublish) {
     console.log(
-      `\n${plan.missing.length} of ${manifest.platforms.length} package(s) lack Vale ${manifest.valeVersion}. Publishing.`
+      `\n${plan.missing.length} of ${packages.length} package(s) lack Vale ${manifest.valeVersion}. Publishing.`
     );
   } else {
     console.log(

@@ -338,3 +338,67 @@ test("base version strips the stamp", () => {
   assert.equal(baseVersion("3.21.0-20260914010203"), "3.21.0");
   assert.throws(() => baseVersion("3.21.0"), /not a stamped version/);
 });
+
+// ---------------------------------------------------------------------------
+// The grammar package (openspec/changes/vale-grammars-package)
+//
+// @taskless/vale-grammars matches the same @taskless/vale-* prefix, so once
+// the CLI pins it, it is a seventh member of the set with no change here. It
+// is a regular dependency rather than an optional one, since every host needs
+// it, which is the case these tests pin.
+// ---------------------------------------------------------------------------
+
+const GRAMMARS = "@taskless/vale-grammars";
+
+const sourceWithGrammarsAt = (version) =>
+  `${JSON.stringify(
+    {
+      name: "@taskless/cli",
+      dependencies: { [GRAMMARS]: version, zod: "^4" },
+      ...pinnedAt(version),
+    },
+    undefined,
+    2
+  )}\n`;
+
+test("--write moves the grammar pin with the six platform pins", async () => {
+  const source = sourceWithGrammarsAt("3.27.0-20261117230017");
+  const { written } = await run({
+    packageJson: JSON.parse(source),
+    packageJsonSource: source,
+    published: "3.28.0-20261201000000",
+    argv: ["--write"],
+  });
+  const pins = JSON.parse(written);
+  assert.equal(pins.dependencies[GRAMMARS], "3.28.0-20261201000000");
+  assert.equal(written.match(/3\.28\.0-20261201000000/g).length, 7);
+  assert.doesNotMatch(written, /3\.27\.0-20261117230017/);
+  assert.equal(pins.dependencies.zod, "^4");
+});
+
+test("grammars published at a different version block the upgrade", async () => {
+  // Binaries out at the new stamp, grammars still at the old one: upgrading
+  // would pin a grammar package npm does not serve at that version.
+  const source = sourceWithGrammarsAt("3.27.0-20261117230017");
+  await assert.rejects(
+    run({
+      packageJson: JSON.parse(source),
+      published: Object.fromEntries([
+        ...PLATFORMS.map((name) => [name, "3.28.0-20261201000000"]),
+        [GRAMMARS, "3.27.0-20261117230017"],
+      ]),
+    }),
+    /not at one version, so it is mid-publish or partially failed/
+  );
+});
+
+test("a grammar pin that disagrees with the platform pins aborts", () => {
+  assert.throws(
+    () =>
+      collectPins({
+        dependencies: { [GRAMMARS]: "3.26.0-20261102164455" },
+        ...pinnedAt("3.27.0-20261117230017"),
+      }),
+    /pins disagree/
+  );
+});
