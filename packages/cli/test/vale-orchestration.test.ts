@@ -669,3 +669,44 @@ describe("check renders one marker per notice", () => {
     }
   });
 });
+
+describe("a grammar directory in the Vale rules tree", () => {
+  // Vale reads a grammar from the StylesPath before the pinned grammars, and
+  // the rules tree is the StylesPath of every assembled config, so `check`
+  // refuses the Vale run rather than lint with grammars nobody pinned. The
+  // refusal is the tree's, so it needs no Vale binary to be decided.
+  it("refuses the Vale run, fails the check, and still reports ast-grep", async () => {
+    const cwd = makeMixedProject();
+    mkdirSync(join(cwd, ".taskless", "rules", "vale", "config", "grammars"), {
+      recursive: true,
+    });
+
+    const assembledVale = await assembleValeConfig(cwd);
+    expect(assembledVale).toMatchObject({
+      status: "refused",
+      refusals: [],
+      treeRejections: [{ constraintId: "vale-tree-no-grammars" }],
+    });
+
+    const dispatched = await runEngines({
+      cwd,
+      paths: ["app.js", "doc.md"],
+      astGrepConfigPath: await assembleSgConfig(cwd),
+      vale: assembledVale,
+      runtimeRules: [],
+    });
+    expect(
+      dispatched.results.some((result) => result.source === "ast-grep")
+    ).toBe(true);
+    expect(dispatched.results.some((result) => result.source === "vale")).toBe(
+      false
+    );
+    expect(dispatched.failures.join("\n")).toContain(
+      "Vale did not run: the Vale rules tree was rejected"
+    );
+    expect(dispatched.failures.join("\n")).toContain(
+      ".taskless/rules/vale/config/grammars"
+    );
+    expect(dispatched.exitCode).not.toBe(0);
+  });
+});

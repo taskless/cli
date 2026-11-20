@@ -27,6 +27,7 @@ import {
   runRuntimeFixtures,
 } from "./runtime/run-fixtures";
 import { validateValeRuleConfig } from "../schemas/vale-config";
+import { valeTreeGrammarsViolation } from "./vale/grammar-tree";
 import { validateValeRule } from "../schemas/vale-rule";
 import { collectNotices } from "../util/notices";
 import { verifyRule, type VerifyResult } from "./verify";
@@ -427,6 +428,14 @@ async function validateRuleComponents(
         }
         advisories.push(...verdict.advisories);
       }
+    }
+
+    // The rules tree is every Vale rule's StylesPath, so a grammar directory
+    // in it changes how every one of them reads source code. Reported against
+    // each rule, by the same check assembly refuses `check` on.
+    const grammars = await valeTreeGrammarsViolation(cwd);
+    if (grammars !== undefined) {
+      violate({ errors, violations }, grammars.constraintId, grammars.message);
     }
 
     // `violations` is empty, never absent, when nothing failed: a consumer

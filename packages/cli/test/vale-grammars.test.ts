@@ -55,7 +55,15 @@ describe("valeEnvironment", () => {
       expect(valeEnvironment("/pinned/grammars").VALE_GRAMMARS_PATH).toBe(
         "/pinned/grammars"
       );
-      expect(valeEnvironment()).not.toHaveProperty("VALE_GRAMMARS_PATH");
+      // A grammar package that did not resolve drops the variable rather
+      // than letting the inherited one through.
+      const missing = resolveValeGrammars({
+        ...VALE_GRAMMARS,
+        packageName: "@taskless/vale-grammars-that-do-not-exist",
+      });
+      expect(valeEnvironment(missing.path)).not.toHaveProperty(
+        "VALE_GRAMMARS_PATH"
+      );
     } finally {
       if (previous === undefined) delete process.env.VALE_GRAMMARS_PATH;
       else process.env.VALE_GRAMMARS_PATH = previous;

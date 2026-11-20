@@ -20,8 +20,8 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 4. Bootstrap (maintainer, between PR A and PR B)
 
-- [ ] 4.1 Run `node .github/scripts/vale-prepare.cjs --only grammars --version 3.27.0-20261117230017` on PR A's branch, publish that tarball by hand with `npm publish --access public --tag latest`, and register its npm trusted publisher against `release-vale.yml` and `npm-autopublish`; verify `npm view @taskless/vale-grammars version` prints `3.27.0-20261117230017`.
-- [ ] 4.2 Merge PR A, then confirm the `Release Vale` run's gate reports all seven packages published and publishes nothing.
+- [x] 4.1 Run `node .github/scripts/vale-prepare.cjs --only grammars --version 3.27.0-20261117230017` on PR A's branch, publish that tarball by hand with `npm publish --access public --tag latest`, and register its npm trusted publisher against `release-vale.yml` and `npm-autopublish`; verify `npm view @taskless/vale-grammars version` prints `3.27.0-20261117230017`.
+- [x] 4.2 Confirm `vale-gate.cjs`, run against PR A's manifest and the live registry, reports all seven packages published, so merging PR A publishes nothing.
 
 ## 5. CLI wiring (PR B)
 
@@ -32,9 +32,9 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 6. Refusal and coverage (PR B)
 
-- [ ] 6.1 In `assembleValeConfig`, refuse when `<rules tree>/config/grammars/` exists, with a tree-level refusal that `validate` and `check` both report; verify with tests for the `validate` failure, the `check` failure with non-zero exit and ast-grep results still reported, and an empty directory.
-- [ ] 6.2 Add the D6 coverage case to `test/vale-vendor-contract.test.ts`: every comment-tier extension in `VALE_FORMAT_TIERS`, run with the pinned grammars, produces no `grammar "<name>" is not installed` warning; verify it fails when one grammar is withheld and passes with the full set.
-- [ ] 6.3 Extend `engine-version-consistency.test.ts` so the grammar pin is the same exact version as the platform pins and its Vale component equals `VALE_VERSION`; verify it fails on a mismatched pin.
+- [x] 6.1 Refuse a `<rules tree>/config/grammars/` directory through one shared check under a new `vale-tree-no-grammars` constraint, reported by `validate` against every Vale rule and by assembly as a tree-level refusal `check` reports; verify with tests for the `validate` failure, the `check` failure with non-zero exit and ast-grep results still reported, and an empty directory.
+- [x] 6.2 Add the D6 coverage case to `test/vale-vendor-contract.test.ts`: every comment-tier extension in `VALE_FORMAT_TIERS`, run with the pinned grammars, produces no `grammar "<name>" is not installed` warning; verify it fails when one grammar is withheld and passes with the full set.
+- [x] 6.3 Extend `engine-version-consistency.test.ts` so the grammar pin is the same exact version as the platform pins and its Vale component equals `VALE_VERSION`; verify it fails on a mismatched pin.
 
 ## 7. Release notes (PR B)
 

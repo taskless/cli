@@ -282,11 +282,18 @@ async function runValeEngine(options: DispatchOptions): Promise<EngineOutcome> {
  */
 function describeValeRefusal(refused: RefusedValeConfig): string {
   const rules = refused.refusals.map((refusal) => refusal.ruleId).join(", ");
-  const lines = refused.refusals.flatMap((refusal) =>
-    refusal.rejections.map((rejection) => rejection.message)
-  );
+  const lines = [
+    ...refused.treeRejections.map((rejection) => rejection.message),
+    ...refused.refusals.flatMap((refusal) =>
+      refusal.rejections.map((rejection) => rejection.message)
+    ),
+  ];
+  const reason =
+    refused.refusals.length === 0
+      ? "the Vale rules tree was rejected"
+      : `the config of ${rules} was rejected by the config schema`;
   return [
-    `Vale did not run: the config of ${rules} was rejected by the config schema. ` +
+    `Vale did not run: ${reason}. ` +
       `Run \`${getCliPrefix()} verify\` for the constraint behind each line.`,
     ...lines,
   ].join("\n");

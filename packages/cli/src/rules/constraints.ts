@@ -211,6 +211,16 @@ export const RULE_CONSTRAINTS = [
     rationale:
       "Matcher precedence is positional: where two matchers match a file, the later wins. A `NO` that precedes every `YES` is therefore either dead (the file matched nothing else, and the rule was already off) or overridden by the `YES` that follows it. Measured against the pinned Vale, `[docs/legacy/**] NO` then `[docs/**] YES` fires in `docs/legacy/`. No config means that, so it is refused rather than reported.",
   },
+  // --- Vale: the rules tree as a whole ---------------------------------------
+  {
+    id: "vale-tree-no-grammars",
+    engine: "vale",
+    enforcedBy: "validate",
+    summary:
+      "The Vale rules tree holds no `config/grammars/` directory; Vale's grammars come only from the pinned grammar package.",
+    rationale:
+      "Since Vale 3.27.0 the tree-sitter grammars Vale uses to find comments in source code ship apart from the binary, and the CLI names its pinned `@taskless/vale-grammars` to Vale. The rules tree is the StylesPath of every assembled config, and Vale reads a grammar there before the pinned one, one language at a time, so a `vale sync` against an assembled config would swap in grammars nobody reviewed. Its presence is refused, not its contents, because an empty directory is a populated one after the next sync. `validate` reports it against every Vale rule, and `check` refuses the Vale run.",
+  },
 ] as const satisfies readonly RuleConstraint[];
 
 /**

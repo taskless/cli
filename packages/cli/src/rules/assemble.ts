@@ -19,6 +19,7 @@ import {
 import { validateValeRuleConfig } from "../schemas/vale-config";
 import type { RuleViolation } from "./constraints";
 import { RULE_TESTS_DIRECTORY, RULES_DIRECTORY } from "./layout";
+import { valeTreeGrammarsViolation } from "./vale/grammar-tree";
 
 /**
  * Assembling the per-rule configs into the single file each tool accepts.
@@ -214,8 +215,17 @@ export interface AssembledValeConfig {
  */
 export interface RefusedValeConfig {
   status: "refused";
-  /** Every rule refused, in id order. Never empty. */
+  /**
+   * Every rule refused, in id order. Empty only when the refusal is the
+   * tree's rather than any rule's ({@link treeRejections}).
+   */
   refusals: ValeConfigRefusal[];
+  /**
+   * What refuses the run whatever the rules say: a grammar directory in the
+   * Vale rules tree, which every assembled config's StylesPath would hand to
+   * Vale ahead of the pinned grammars. Empty when the tree is clean.
+   */
+  treeRejections: RuleViolation[];
 }
 
 export type ValeAssembly = AssembledValeConfig | RefusedValeConfig;
@@ -268,6 +278,8 @@ export async function assembleValeConfig(
   options: AssembleOptions = {}
 ): Promise<ValeAssembly | undefined> {
   const ruleIds = await listRuleIds(cwd, "vale");
+  const grammars = await valeTreeGrammarsViolation(cwd);
+  const treeRejections = grammars === undefined ? [] : [grammars];
   // A filter selects which validated blocks are written, and is deliberately
   // NOT applied to `ruleIds`: the loop below has to reach every rule so a
   // rejected sibling still lands in `refusals`.
@@ -303,7 +315,9 @@ export async function assembleValeConfig(
     blocks.push(valeRuleBlock(ruleId, source, verdict.breadcrumbLines));
   }
 
-  if (refusals.length > 0) return { status: "refused", refusals };
+  if (refusals.length > 0 || treeRejections.length > 0) {
+    return { status: "refused", refusals, treeRejections };
+  }
   if (blocks.length === 0) return undefined;
 
   const contents = [valeHeader(), ...blocks].join("\n");
