@@ -294,7 +294,7 @@ const VIOLATIONS: Record<string, Scenario> = {
       });
       return verifyValeConfig(VALID_VALE_CONFIG);
     },
-    names: /config\/grammars holds Vale grammars the CLI did not ship/,
+    names: /config\/grammars exists\. Vale would read any grammar placed there/,
   },
 };
 

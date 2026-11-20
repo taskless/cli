@@ -271,10 +271,25 @@ describe("validate checks components without requiring tests", () => {
         rule?.violations.map((violation) => violation.constraintId)
       ).toEqual(["vale-tree-no-grammars"]);
       expect(rule?.violations[0]?.message).toContain(
-        ".taskless/rules/vale/config/grammars holds Vale grammars the CLI did not ship"
+        ".taskless/rules/vale/config/grammars exists. Vale would read any grammar placed there"
       );
     }
   );
+
+  // With no Vale rule left, `check` still refuses a stale grammar directory,
+  // so `validate` must fail too rather than pass a tree `check` rejects. It
+  // does through `config/` itself, which is listed like any rule directory.
+  it("refuses a grammar directory when no Vale rule is left", async () => {
+    await mkdir(join(cwd, ".taskless", "rules", "vale", "config", "grammars"), {
+      recursive: true,
+    });
+    const result = await runCli(["validate", "-d", cwd, "--json"]);
+    expect(result.exitCode).not.toBe(0);
+    const violations = (JSON.parse(result.stdout) as Report).rules.flatMap(
+      (rule) => rule.violations.map((violation) => violation.constraintId)
+    );
+    expect(violations).toContain("vale-tree-no-grammars");
+  });
 
   // The style schema's own advisory, through the real CLI.
   // `vale-schema-contract.test.ts` holds the advisory to its rule; this says
