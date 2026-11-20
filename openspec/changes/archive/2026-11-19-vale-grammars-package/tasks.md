@@ -43,5 +43,5 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 8. PR B checks and archive
 
-- [ ] 8.1 Run `pnpm build`, `pnpm typecheck`, `pnpm lint`, and the full CLI suite and confirm they pass on every branch of PR B.
-- [ ] 8.2 Archive with `pnpm openspec archive vale-grammars-package -y` after confirming every prior scenario in the three standing specs survives (the pre-archive check in AGENTS.md); open PR B to `main` with `Refs #703` and request `@claude /review`.
+- [x] 8.1 Run `pnpm build`, `pnpm typecheck`, `pnpm lint`, and the full CLI suite and confirm they pass on every branch of PR B.
+- [x] 8.2 Archive with `pnpm openspec archive vale-grammars-package -y` after confirming every prior scenario in the three standing specs survives (the pre-archive check in AGENTS.md); open PR B to `main` with `Refs #703` and request `@claude /review`.
