@@ -3,7 +3,7 @@
 
 /**
  * Tests for vale-gate.cjs — the decision that keeps an unrelated edit to
- * vale-manifest.json from publishing six packages.
+ * vale-manifest.json from publishing seven packages.
  *
  * The interesting cases are all "what does the registry already have", so the
  * registry is stubbed throughout and nothing here touches the network. The
