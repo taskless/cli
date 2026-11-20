@@ -25,10 +25,10 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 5. CLI wiring (PR B)
 
-- [ ] 5.1 Add `@taskless/vale-grammars` to `packages/cli/package.json` `dependencies` at the same exact version as the six platform pins, and regenerate `pnpm-lock.yaml`; verify with `pnpm install --frozen-lockfile`.
-- [ ] 5.2 Add the grammar resolver beside `findValeBinary` (spec, per-process cache, miss as `{ path: undefined, tried }`); verify with unit tests for a resolved package and a missing one.
-- [ ] 5.3 Set `VALE_GRAMMARS_PATH` in `spawnVale`'s child environment when the resolver returns a path; verify that the six #703 vendor-contract failures pass with no `VALE_GRAMMARS_PATH` in the test shell.
-- [ ] 5.4 Export the grammar spec and resolver from `src/node/runtimes/index.ts` with a note in the entry's documentation; verify the build's export classification passes and `dist/node/runtimes/index.d.ts` declares both.
+- [x] 5.1 Add `@taskless/vale-grammars` to `packages/cli/package.json` `dependencies` at the same exact version as the six platform pins, and regenerate `pnpm-lock.yaml`; verify with `pnpm install --frozen-lockfile`.
+- [x] 5.2 Add the grammar resolver beside `findValeBinary` (spec, per-process cache, miss as `{ path: undefined, tried }`); verify with unit tests for a resolved package and a missing one.
+- [x] 5.3 Set `VALE_GRAMMARS_PATH` in `spawnVale`'s child environment when the resolver returns a path; verify that the six #703 vendor-contract failures pass with no `VALE_GRAMMARS_PATH` in the test shell.
+- [x] 5.4 Export the grammar spec and resolver from `src/node/runtimes/index.ts` with a note in the entry's documentation; verify the build's export classification passes and `dist/node/runtimes/index.d.ts` declares both.
 
 ## 6. Refusal and coverage (PR B)
 

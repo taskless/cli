@@ -6,6 +6,8 @@ import { isAbsolute, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { findValeBinary } from "../src/rules/vale/binary";
+import { findValeGrammars } from "../src/rules/vale/grammars";
+import { valeEnvironment } from "../src/rules/vale/run";
 import { asValeConfigError } from "../src/rules/vale/map";
 import {
   VALE_COMMENT_EXTENSIONS,
@@ -42,6 +44,7 @@ import { VALE_CHECK_TYPES } from "../src/schemas/vale-rule";
  */
 
 const binary = findValeBinary().path;
+const grammars = findValeGrammars().path;
 const withVale = binary === undefined ? describe.skip : describe;
 
 const workspaces: string[] = [];
@@ -81,7 +84,7 @@ function runRaw(cwd: string, paths: string[], extraArguments: string[] = []) {
       "--",
       ...paths,
     ],
-    { cwd, encoding: "utf8" }
+    { cwd, encoding: "utf8", env: valeEnvironment(grammars) }
   );
 }
 
@@ -231,7 +234,7 @@ function assembled(
       "--",
       ...names,
     ],
-    { cwd, encoding: "utf8" }
+    { cwd, encoding: "utf8", env: valeEnvironment(grammars) }
   );
   expect(result.status, result.stderr).toBe(0);
   const parsed = JSON.parse(result.stdout || "{}") as Record<
@@ -2616,7 +2619,7 @@ function firing(cwd: string, config: string, path: string): string[] {
   const result = spawnSync(
     binary as string,
     ["--config", config, "--output=JSON", "--no-exit", "--", path],
-    { cwd, encoding: "utf8" }
+    { cwd, encoding: "utf8", env: valeEnvironment(grammars) }
   );
   expect(result.status, result.stderr).toBe(0);
   return Object.keys(

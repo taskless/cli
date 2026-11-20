@@ -74,6 +74,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@taskless/vale-grammars':
+        specifier: 3.27.0-20261117230017
+        version: 3.27.0-20261117230017
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -900,6 +903,9 @@ packages:
     resolution: {integrity: sha512-ct+yVvRqxny3En5q+nz3gwUm5cRtwo5Za2cjgqhrks31ss0qn8TB8uzkZ6L7G1NodEgeupnlYuyxAPrdgJkIXg==}
     cpu: [x64]
     os: [darwin]
+
+  '@taskless/vale-grammars@3.27.0-20261117230017':
+    resolution: {integrity: sha512-8NMJzgnFjA4UyOCZD/Wjw1lb/gfKKHMeXVQaAV5n+W2uolOeef75mvDnapsLrjifRjz9S4LcCtRd6JqAnT94Nw==}
 
   '@taskless/vale-linux-arm64@3.27.0-20261117230017':
     resolution: {integrity: sha512-xePLv6AYtEHu0P1taxFsjIlXkQ8P9XbZqsqRMZpoKKUXU/938/muo7SIRNXHzIQPBAGBCUpDOXyAyGr0tvQzfA==}
@@ -3381,6 +3387,8 @@ snapshots:
 
   '@taskless/vale-darwin-x64@3.27.0-20261117230017':
     optional: true
+
+  '@taskless/vale-grammars@3.27.0-20261117230017': {}
 
   '@taskless/vale-linux-arm64@3.27.0-20261117230017':
     optional: true
