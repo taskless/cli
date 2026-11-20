@@ -115,3 +115,43 @@ export {
 } from "../../rules/platform-binary.js";
 export { AST_GREP_BINARY } from "../../rules/ast-grep-binary.js";
 export { VALE_BINARY } from "../../rules/vale/binary.js";
+
+/**
+ * ## Vale needs its grammars too
+ *
+ * Since Vale 3.27.0 the tree-sitter grammars Vale uses to find comments in
+ * source code ship apart from the binary, as `@taskless/vale-grammars`, pinned
+ * at the same version as the platform packages. Without them Vale reads
+ * comments by their delimiters and reports different findings for the same
+ * rule: a `//nolint` line becomes prose, a one-line CSS comment is skipped. A
+ * verifier that runs a Vale rule over source code should name the same
+ * grammars `taskless check` does:
+ *
+ * ```ts
+ * import {
+ *   VALE_BINARY,
+ *   resolvePlatformBinary,
+ *   resolveValeGrammars,
+ * } from "@taskless/cli/node/runtimes";
+ *
+ * const vale = resolvePlatformBinary(VALE_BINARY);
+ * const grammars = resolveValeGrammars();
+ * if (vale.path === undefined || grammars.path === undefined) {
+ *   throw new Error("Vale or its grammars did not resolve");
+ * }
+ * spawn(vale.path, argv, {
+ *   env: { ...process.env, VALE_GRAMMARS_PATH: grammars.path },
+ * });
+ * ```
+ *
+ * Set the variable even when one is already in the environment: Vale prefers
+ * a grammar in the StylesPath, then `VALE_GRAMMARS_PATH`, so an inherited
+ * value names grammars nobody pinned. A miss is reported as a value, like the
+ * binary's, so a verifier can fail closed.
+ */
+export {
+  resolveValeGrammars,
+  VALE_GRAMMARS,
+  type ValeGrammarsResolution,
+  type ValeGrammarsSpec,
+} from "../../rules/vale/grammars.js";

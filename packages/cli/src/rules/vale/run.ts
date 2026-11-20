@@ -15,6 +15,7 @@ import {
 import { buildPath } from "../scan";
 import { isWholeProjectWalk } from "../walk-scope";
 import { findValeBinary, valeUnavailableMessage } from "./binary";
+import { findValeGrammars } from "./grammars";
 import {
   buildValeGlob,
   converterExclusionGlobs,
@@ -410,6 +411,28 @@ type ValeAttempt =
     };
 
 /**
+ * The environment every Vale child runs in.
+ *
+ * `VALE_GRAMMARS_PATH` names the pinned grammar package's directory, which Vale
+ * reads for any grammar its StylesPath lacks. It is always REPLACED, never
+ * inherited: a value from the user's shell would hand Vale grammars the CLI
+ * did not ship or pin. When the package does not resolve the variable is
+ * dropped rather than left inherited, and Vale reads comments by delimiters,
+ * saying so in a `grammar … is not installed` warning that reaches the user as
+ * a notice.
+ */
+export function valeEnvironment(
+  grammars: string | undefined
+): NodeJS.ProcessEnv {
+  const { VALE_GRAMMARS_PATH: _inherited, ...inherited } = process.env;
+  return {
+    ...inherited,
+    PATH: buildPath(),
+    ...(grammars === undefined ? {} : { VALE_GRAMMARS_PATH: grammars }),
+  };
+}
+
+/**
  * Spawn Vale once and map what it reports. Extracted from {@link runVale} so
  * the retry loop there can call it again with a wider exclusion glob after
  * dropping one file that could not be parsed.
@@ -427,7 +450,7 @@ async function spawnVale(
     const child = spawn(binary, argv, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PATH: buildPath() },
+      env: valeEnvironment(findValeGrammars().path),
     });
 
     // One decoder per stream, not `chunk.toString()` per chunk. A multi-byte
