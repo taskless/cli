@@ -16,7 +16,7 @@ Groups 1–3 are PR A, cut from `origin/main`. Group 4 is the maintainer's manua
 
 ## 3. PR A checks
 
-- [ ] 3.1 Run `pnpm typecheck`, `pnpm lint`, and `node --test .github/scripts/` and confirm they pass; open PR A to `main` with the `skip-changeset` label and request `@claude /review`.
+- [x] 3.1 Run `pnpm typecheck`, `pnpm lint`, and `node --test .github/scripts/` and confirm they pass; open PR A to `main` with the `skip-changeset` label and request `@claude /review`.
 
 ## 4. Bootstrap (maintainer, between PR A and PR B)
 
