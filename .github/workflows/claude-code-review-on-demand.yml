@@ -50,8 +50,16 @@ name: Claude Code Review (on demand)
 #     action mints a `claude` GitHub App token over OIDC, whose scopes come from
 #     the app installation (contents, workflows and actions write) and which
 #     the `permissions:` block below does not limit at all;
-#   - fires ONLY on a maintainer's comment (author_association gate), so an
-#     outside contributor on a fork can never trigger it.
+#   - fires ONLY on a comment from a maintainer (author_association gate) or
+#     from the Aibex GitHub App's bot, `aibex-agent[bot]`, so an outside
+#     contributor on a fork can never trigger it. The bot is trusted like its
+#     installer: the App acts only for threads a maintainer's herd started, and
+#     AGENTS.md ("Requesting the Claude review") has every agent ask for the
+#     review with this comment, including on the PRs the bot opened. A comment
+#     made with an App installation token starts workflows; only
+#     GITHUB_TOKEN's do not. Copied from aibexhq/aibex's copy of this workflow,
+#     minus its review-on-open trigger: this repo is public and stays
+#     on demand.
 #
 # The review reports itself on the PR as a `Claude Review` COMMIT STATUS, on
 # the head commit it checked out: pending while it runs, then success, failure
@@ -112,13 +120,15 @@ on:
 
 jobs:
   claude-review-on-demand:
-    # A MAINTAINER commented `@claude /review` — on a PR conversation, or inline
-    # on the diff. (issue_comment fires for issues too, so require a PR there.)
+    # A MAINTAINER (or the Aibex bot) commented `@claude /review` — on a PR
+    # conversation, or inline on the diff. (issue_comment fires for issues too,
+    # so require a PR there.)
     if: >-
       contains(github.event.comment.body, '@claude /review') &&
       (github.event.comment.author_association == 'OWNER' ||
        github.event.comment.author_association == 'MEMBER' ||
-       github.event.comment.author_association == 'COLLABORATOR') &&
+       github.event.comment.author_association == 'COLLABORATOR' ||
+       github.event.comment.user.login == 'aibex-agent[bot]') &&
       (github.event_name == 'pull_request_review_comment' ||
        github.event.issue.pull_request)
     runs-on: ubuntu-latest
@@ -328,6 +338,13 @@ jobs:
           # the command word in the phrase, only what follows it is forwarded,
           # as plain text: `all`, or a maintainer's guidance for this review.
           trigger_phrase: "@claude /review"
+          # The job's `if:` above lets the Aibex App's bot in, but the action
+          # checks the actor again and refuses any bot not named here
+          # ("Workflow initiated by non-human actor: aibex-agent (type: Bot).
+          # Add bot to allowed_bots list."), so without this the bot's
+          # `@claude /review` never gets reviewed. Only this bot: the `if:`
+          # still gates everyone else.
+          allowed_bots: "aibex-agent"
           # The "Fix this →" claude.ai/code deep-links render as broken markdown
           # (huge percent-encoded query). Turn them off at the source.
           include_fix_links: false
