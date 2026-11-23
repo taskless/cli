@@ -22,7 +22,7 @@
     "from the releases API by the detect phase; it is reviewed in the same pull",
     "request as the binary digests and verified the same way before unpacking."
   ],
-  "valeVersion": "3.27.0",
+  "valeVersion": "3.28.1",
   "upstream": {
     "repository": "errata-ai/vale",
     "tag": "v{version}",
@@ -37,7 +37,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_macOS_arm64.tar.gz",
       "archiveMember": "vale",
-      "sha256": "91bcd6352a832e5995a61dde73ee6367c5006669c6efa4091e0404ec8d7dd7e3"
+      "sha256": "b5362c16d2c95db9d773078b957f5bd59cef27d05dac34c5248a93fed130e9f1"
     },
     {
       "package": "@taskless/vale-darwin-x64",
@@ -46,7 +46,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_macOS_64-bit.tar.gz",
       "archiveMember": "vale",
-      "sha256": "0288ab603ee6d67240ac5b97e67b0915efcfc28bb33f212a885110a2a5a6e2bc"
+      "sha256": "4a59f52678b4e6bd55846fb6c22371ed531a274a614ea8e4d51a365c365b563e"
     },
     {
       "package": "@taskless/vale-linux-arm64",
@@ -55,7 +55,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_Linux_arm64.tar.gz",
       "archiveMember": "vale",
-      "sha256": "dcaee812fd892c5750702d16ed348a1f7113be57c73cf36fe9e016c789cae6e2"
+      "sha256": "af0ca36ec6133ba20093295591e43ed2823b2632520d1f3811293aa4cbe758f2"
     },
     {
       "package": "@taskless/vale-linux-x64",
@@ -64,7 +64,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_Linux_64-bit.tar.gz",
       "archiveMember": "vale",
-      "sha256": "c80d62f6bce87b81843ac5b512a26e63213927b957adba0a64fc594570da2000"
+      "sha256": "068954ad869ebec24b8dec6ebcd1cbb1fd5f5a83e966a35baedfae8b2cdc093a"
     },
     {
       "package": "@taskless/vale-win32-arm64",
@@ -73,7 +73,7 @@
       "cpu": "arm64",
       "asset": "vale_{version}_Windows_arm64.zip",
       "archiveMember": "vale.exe",
-      "sha256": "61fcda27c55f14c89b35b00c19cc5bef896142707adbfbaf194ed020f8516a35"
+      "sha256": "8ac31442594dc3c6774ac6d7b5996a9c16629f1c2a93e255e54907c2cd851a87"
     },
     {
       "package": "@taskless/vale-win32-x64",
@@ -82,7 +82,7 @@
       "cpu": "x64",
       "asset": "vale_{version}_Windows_64-bit.zip",
       "archiveMember": "vale.exe",
-      "sha256": "26e61cc58ac4180866d068dc2325d2625560c8cc518de7e7b5523211a5ab0cbc"
+      "sha256": "5ad37282f16f3903bb2ec89a7b7b9e718ef838577ffc1657f892a0068cd9b0f3"
     }
   ],
   "grammars": {
@@ -93,91 +93,91 @@
     "modules": [
       {
         "name": "bash",
-        "sha256": "383f41dac7ba7ff6b62310ae90fbecad5872b421e16362428e85f6d3383282a4"
+        "sha256": "b5716b70c5d3bfc8b92bd3fcf9e6e50299786dcad6ce1c35e6077707d5c4acb9"
       },
       {
         "name": "c",
-        "sha256": "0e4d8e14893f8f20dccf7ee85c79c6beeeac4c77f032551a237067a93b450b0d"
+        "sha256": "d79b2c12b2314d91704a0a1959b3faa33176566d6bbfecc3c4029ed1b25bc8c7"
       },
       {
         "name": "cpp",
-        "sha256": "0f550858aa68c02663362631dc64d40e7b1a28aa48379fa5d55c0dfc3bf905f7"
+        "sha256": "dd51fe5571448e474b6444ab44c1b8414d9d7010ac3b030f5015f8482103e567"
       },
       {
         "name": "csharp",
-        "sha256": "1c5ef2dc517dcd7fad2c7e6d1e2b5c8a60690b10d34a22cb3b108d98b3b73898"
+        "sha256": "0d157009744c2dce9f06a6efe12f1a0316ddc532e216c60000361c4ad9039b40"
       },
       {
         "name": "css",
-        "sha256": "efc982ba928828df69d3a0a8d17ff4095b5890d9f918c41ce34adff940d31529"
+        "sha256": "1694157c02573d7b6531e64b16121ace59cc848e94f214c40a3d9d396afa5f71"
       },
       {
         "name": "elixir",
-        "sha256": "3beddaad99e1f3069948d5233709feb1ce8aaeab5b5a8333de3dc5e32659ecb0"
+        "sha256": "d574e6995fa4d45d1c959386f3c9d3db0f1f1b284da25d379ac6387ba2c257f5"
       },
       {
         "name": "elm",
-        "sha256": "baedd9bdc51c76883a7d5f81e340e210f117e4355bc2fd479ae4b11ce8041ff1"
+        "sha256": "23976b8dc5d44154610742c3c9e775c29edc818cb68ddc0af5b599e8738d46f1"
       },
       {
         "name": "go",
-        "sha256": "c188c53747864bff9849cc39eaac51393c3264be8ae3c67c12edb2ccc94eb130"
+        "sha256": "f5b8f9b64d1084abd36a56512d43058ec7290419bcf25bf07456a1d89f56f51e"
       },
       {
         "name": "java",
-        "sha256": "fc65e8426fe7116ef941b227520beb542cd2f6c8cf0789d28b63b370e8d36827"
+        "sha256": "a17cf883206363c84a00c6d1ef6bafc6cd6d66d2738ba96e4aec6c900a783d48"
       },
       {
         "name": "javascript",
-        "sha256": "448d9a94d558b4e2e62c929b815378337ea5a151fc12e1f8277c853314c9e1d4"
+        "sha256": "d213619537fb447fbab292844b4f9214f2627a92c28547e289a6ee3be6caa7e0"
       },
       {
         "name": "julia",
-        "sha256": "edc4dbc9cfb3dc06f72c1820a7bd16d481a4c492efa35f9dd7a23a7c876d29f8"
+        "sha256": "11b065f912647689bc54633839d3a0a5f4b1252c2b1211bce02ae2600c5cd6d6"
       },
       {
         "name": "kotlin",
-        "sha256": "58b5e2d01f1920cb2fb908863a477b6cd14cc0e3cf8a36fc4413191b709f4926"
+        "sha256": "4f6013064f62c2397f9d141c2105cab309f796ba8cfd5648dbe7cf789c6027df"
       },
       {
         "name": "lua",
-        "sha256": "10c94b27ea4d6cf4779be2bcf57accf256b1c752b57fcf27ff56be297ad9178f"
+        "sha256": "51b4a2a9c4cbb0c71f51e7c1225b4c579c2fb69b7b57dd81a290ff43125dea14"
       },
       {
         "name": "php",
-        "sha256": "326f84f19873498972a9b606b4af4c5e4cfa77a75a45bb1ac6c29801bf9c16f2"
+        "sha256": "706dfffd3b9678bce182b3aa351146123d61ed749eca7b2441534cb553ebde65"
       },
       {
         "name": "proto",
-        "sha256": "4262870472d181b4bbc6afb3df39d81de13f84910d6f87a4032d66d346c17bef"
+        "sha256": "be3bc757e25fca3b7b1afd5424d75b449182c75820b1fc970d3ba11e40f0aeda"
       },
       {
         "name": "python",
-        "sha256": "cd369ca78cb327534bfab0eefb710b38115e0644cda04709da174f675c28a1b2"
+        "sha256": "48761749cbbe01305386fdcf8c44a628e9b61ab4f9dc4988d646b6a50f436e18"
       },
       {
         "name": "ruby",
-        "sha256": "a31c8e1f88bab718794f281cbf6b7b4c5cfaf3526e379da1ba53ca7d3cfe6548"
+        "sha256": "4dc459b3ba7863a06e5905862394376876a47e287043ead7a1e964a4f0bbe498"
       },
       {
         "name": "rust",
-        "sha256": "040788500c7414b3e789f08f0281e4d12fdcf197720beb238e27139bde511631"
+        "sha256": "0c0b7805d793ddbaadd199d6cde73fd4319f5688ee4dfee914e9aec7b44ed812"
       },
       {
         "name": "toml",
-        "sha256": "8a66d9450aba2f7d1423d16ed6bdc84a2d14dbb6eb26cd75a476128d5bdd2912"
+        "sha256": "2aea031c9c67b2ae874a87a490ee2edb857fbeb41a02a3fd1114080252bda42b"
       },
       {
         "name": "tsx",
-        "sha256": "b051dedfe0ad634a6689c7d328f5df61b2a44fe120cf93146c2d4185fb43f5bc"
+        "sha256": "70154e2052f6ef3cb58c5730fd1119da4a3939e6a78fff600d43d12de35955d5"
       },
       {
         "name": "typescript",
-        "sha256": "d127e82362d35ec0d8945049b9f51735e0db10091b7d884f47ce2f6aebe7a162"
+        "sha256": "fe1518289a3b21497b9ff6e246bc08ab440f4ade01bddb1812cd09ce80b591b3"
       },
       {
         "name": "yaml",
-        "sha256": "8184a6cf2329f6cbc6748fbf8807ae5b58de7ab20f9a19f1301efd1c36a4b971"
+        "sha256": "384e2d70112a4038621aaa349bac42be0816eb68b9998abf10a586a6bd6a1f08"
       }
     ]
   }
