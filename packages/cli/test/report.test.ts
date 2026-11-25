@@ -1416,7 +1416,7 @@ describe("taskless report", () => {
     // The counting and estimating guidance is on demand (#672); --full prints it.
     const { stdout, exitCode } = await run(["agent", "report", "--full"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v10\)/m);
+    expect(stdout).toMatch(/^# Topic: report {5}\(CLI v.+ \/ topic v11\)/m);
     const flat = stdout.replaceAll(/\s+/g, " ");
     const counting = flat.slice(flat.indexOf("## Counting evidence"));
     expect(counting).toContain(

@@ -1,4 +1,4 @@
-# Topic: report     (CLI v%(CLI_VERSION)s / topic v10)
+# Topic: report     (CLI v%(CLI_VERSION)s / topic v11)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -173,7 +173,7 @@ pattern. Code that merely follows a pattern is not a call-out.
 | `reviews`     | a review comment; its count is `surfaced`, not evidence |
 | `commits`     | a commit inside `window` that made the fix              |
 | `issues`      | an issue, ticket, recorded decision, or comment on one  |
-| `agent-files` | a line in CLAUDE.md, AGENTS.md, or similar              |
+| `agent-files` | a line in CLAUDE.md, AGENTS.md, GEMINI.md, or similar   |
 | `conventions` | a TODO, FIXME, XXX, or HACK comment asking for it       |
 | `docs`        | a docs passage, `@deprecated` and the like included     |
 | `tests`       | a test that pins the behaviour                          |
