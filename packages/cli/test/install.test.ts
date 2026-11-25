@@ -75,6 +75,20 @@ describe("detectTools", () => {
     expect(tools[0]!.name).toBe("Cursor");
   });
 
+  it("detects Gemini CLI via .gemini/ directory", async () => {
+    await mkdir(join(cwd, ".gemini"), { recursive: true });
+    const tools = await detectTools(cwd);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.name).toBe("Gemini CLI");
+  });
+
+  it("detects Gemini CLI via GEMINI.md file", async () => {
+    await writeFile(join(cwd, "GEMINI.md"), "", "utf8");
+    const tools = await detectTools(cwd);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.name).toBe("Gemini CLI");
+  });
+
   it("returns multiple tools when multiple signals exist", async () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
     await mkdir(join(cwd, ".cursor"), { recursive: true });

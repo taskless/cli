@@ -1,4 +1,4 @@
-# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v15)
+# Topic: onboard     (CLI v%(CLI_VERSION)s / topic v16)
 
 %(ONE_COMMAND_PER_CALL)s
 
@@ -168,8 +168,12 @@ Use all of these that apply:
      and `HACK` comments. Many of these are latent rules ("don't do
      this", "remove when X").
    - **Agent-memory files**: read `CLAUDE.md`, `AGENTS.md`,
-     `.cursorrules`, `.opencode/AGENTS.md`, and similar agent-context
-     files for explicit rules and conventions stated in prose.
+     `GEMINI.md`, `.cursorrules`, `.opencode/AGENTS.md`, and similar
+     agent-context files for explicit rules and conventions stated in
+     prose. Gemini CLI also reads a `GEMINI.md` in any subdirectory, and
+     `context.fileName` in `.gemini/settings.json` can rename the file
+     (a string or a list of names), so read whatever that setting names
+     too.
    %(SOURCE_PR_REVIEW)s
    - **Commit history**: read the commit messages over the same window
      for fixes that recur: the same missing header added again, the
@@ -232,7 +236,7 @@ pattern, under its kind:
 - `commits`: a commit in the window that made the fix
 - `issues`: an issue, ticket, recorded decision, or a comment on one
 - `conventions`: a TODO, FIXME, XXX, or HACK comment asking for it
-- `agent-files`: a line in CLAUDE.md, AGENTS.md, or similar
+- `agent-files`: a line in CLAUDE.md, AGENTS.md, GEMINI.md, or similar
 - `docs`: a passage in the docs, `@deprecated` and the like included
 - `tests`: a test that pins the behaviour
 
