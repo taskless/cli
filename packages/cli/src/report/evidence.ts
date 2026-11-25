@@ -131,3 +131,41 @@ export function groupTotals(rule: {
   }
   return totals;
 }
+
+/**
+ * Non-zero counts by kind, larger first, `reviews` group before `conventions`
+ * on a tie.
+ */
+export function sourceCounts(rule: {
+  surfaced?: { reviewComments: number };
+  evidence?: Evidence;
+}): Array<{ source: RuleSource; count: number }> {
+  const counts: Record<RuleSource, number> = {
+    reviews: rule.surfaced?.reviewComments ?? 0,
+    commits: rule.evidence?.commits ?? 0,
+    issues: rule.evidence?.issues ?? 0,
+    "agent-files": rule.evidence?.["agent-files"] ?? 0,
+    conventions: rule.evidence?.conventions ?? 0,
+    docs: rule.evidence?.docs ?? 0,
+    tests: rule.evidence?.tests ?? 0,
+  };
+  const order: readonly RuleSource[] = [
+    "reviews",
+    "commits",
+    "issues",
+    "agent-files",
+    "conventions",
+    "docs",
+    "tests",
+  ];
+  return order
+    .filter((source) => counts[source] > 0)
+    .map((source) => ({ source, count: counts[source] }))
+    .toSorted((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return (
+        (SOURCE_GROUPS[a.source] === "reviews" ? 0 : 1) -
+        (SOURCE_GROUPS[b.source] === "reviews" ? 0 : 1)
+      );
+    });
+}
