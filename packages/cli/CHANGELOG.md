@@ -1,5 +1,13 @@
 # @taskless/cli
 
+## 0.13.9
+
+[Compare with v0.13.8](https://github.com/taskless/cli/compare/v0.13.8...v0.13.9)
+
+### Patch Changes
+
+- 18cf36d: Onboarding now reads Gemini CLI's `GEMINI.md` as an agent-memory source, including nested copies and any file `context.fileName` in `.gemini/settings.json` renames it to, and the report credits it under `agent-files`. Install detection of Gemini CLI from `GEMINI.md` or `.gemini/` is now covered by tests.
+
 ## 0.13.8
 
 [Compare with v0.13.7](https://github.com/taskless/cli/compare/v0.13.7...v0.13.8)
