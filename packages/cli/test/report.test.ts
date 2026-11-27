@@ -889,7 +889,7 @@ describe("renderSummary", () => {
     expect(summary).not.toMatch(/month/i);
   });
 
-  it("gives each rule its evidence totals, larger first", () => {
+  it("gives each rule its evidence counts by kind, larger first", () => {
     const report = assembleReport(
       draftOf(["a", "b", "c", "d"].map((id) => localRule(id))),
       factsFor([], {
@@ -956,11 +956,15 @@ describe("renderSummary", () => {
       record: "2026-10-13_142200.json",
       invocation: "npx @taskless/cli",
     });
-    expect(summary).toContain(
-      "Rule a (Taskless ast-grep rule): 3 fix-up commits\n"
-    );
-    expect(summary).toContain("Rule b (Taskless ast-grep rule): 1 issue\n");
-    expect(summary).toContain("Rule c (Taskless ast-grep rule): 2 docs\n");
+    const ruleLines = summary
+      .split("\n")
+      .filter((line) => line.startsWith("  - "));
+    expect(ruleLines).toEqual([
+      "  - Rule a (Taskless ast-grep rule): 3 fix-up commits",
+      "  - Rule b (Taskless ast-grep rule): 1 issue",
+      "  - Rule c (Taskless ast-grep rule): 2 docs",
+    ]);
+    expect(ruleLines[0]).not.toContain("reviews");
     expect(summary).not.toContain("reviews");
   });
 

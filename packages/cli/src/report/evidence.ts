@@ -117,21 +117,6 @@ export function evidenceIssues(rules: readonly RuleEvidence[]): string[] {
   return issues;
 }
 
-/** A rule's two totals, as the report page shows them. */
-export function groupTotals(rule: {
-  surfaced?: { reviewComments: number };
-  evidence?: Evidence;
-}): Record<SourceGroup, number> {
-  const totals: Record<SourceGroup, number> = {
-    reviews: rule.surfaced?.reviewComments ?? 0,
-    conventions: 0,
-  };
-  for (const source of EVIDENCE_SOURCES) {
-    totals[SOURCE_GROUPS[source]] += rule.evidence?.[source] ?? 0;
-  }
-  return totals;
-}
-
 /**
  * Non-zero counts by kind, larger first, `reviews` group before `conventions`
  * on a tie.
@@ -140,27 +125,14 @@ export function sourceCounts(rule: {
   surfaced?: { reviewComments: number };
   evidence?: Evidence;
 }): Array<{ source: RuleSource; count: number }> {
-  const counts: Record<RuleSource, number> = {
-    reviews: rule.surfaced?.reviewComments ?? 0,
-    commits: rule.evidence?.commits ?? 0,
-    issues: rule.evidence?.issues ?? 0,
-    "agent-files": rule.evidence?.["agent-files"] ?? 0,
-    conventions: rule.evidence?.conventions ?? 0,
-    docs: rule.evidence?.docs ?? 0,
-    tests: rule.evidence?.tests ?? 0,
-  };
-  const order: readonly RuleSource[] = [
-    "reviews",
-    "commits",
-    "issues",
-    "agent-files",
-    "conventions",
-    "docs",
-    "tests",
-  ];
-  return order
-    .filter((source) => counts[source] > 0)
-    .map((source) => ({ source, count: counts[source] }))
+  return RULE_SOURCES.map((source) => ({
+    source,
+    count:
+      source === "reviews"
+        ? (rule.surfaced?.reviewComments ?? 0)
+        : (rule.evidence?.[source] ?? 0),
+  }))
+    .filter(({ count }) => count > 0)
     .toSorted((a, b) => {
       if (b.count !== a.count) return b.count - a.count;
       return (

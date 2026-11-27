@@ -16,9 +16,9 @@ import type { ReportRule, ReportV1 } from "./types";
  * The summary states the two kinds of count it has, labelled apart: what the
  * CLI found in the code today, and what review raised over the window.
  *
- * Each rule also carries its two evidence totals, summed and worded the way
- * the report page sums and words them, so the terminal and the page it links
- * to never disagree about a rule.
+ * Each rule also carries its non-zero evidence counts by kind, larger first
+ * with the `reviews` group first on a tie, matching the counts in the facts
+ * file rather than folding them into group totals.
  */
 
 function tierLabel(rule: ReportRule): string {

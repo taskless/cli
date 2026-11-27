@@ -221,7 +221,7 @@ The CLI SHALL publish with `POST https://tskl.es/api/v1/reports` and SHALL alway
 
 ### Requirement: A published report is recorded and summarized
 
-On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.json` (UTC) holding the report URL, the delete credential exactly as the service returned it, and the expiry. When a record by that name already exists, the CLI SHALL instead write `<YYYY-MM-DD_HHMMSS>_<n>.json`, with the smallest `n` from 2 upward that is free, and SHALL NOT overwrite any existing record. When the record cannot be written at all, the report is live and the record was its only copy of the delete credential, so the CLI SHALL exit non-zero with `REPORT_RECORD_FAILED`, with a message stating that the report is live and giving its URL and its delete credential; with `--json` the error envelope SHALL also carry them as `url` and `deleteUrl`, with the expiry as `expiresAt`. Otherwise it SHALL then print a brief summary rendered from a CLI template: one line per rule giving its title and tier, followed by the rule's evidence totals; when the report carries `findings`, a line stating how many problems the rules found in how many files in the code today; a line stating how many review comments across how many pull requests raised the rules' patterns over the window; the report URL; the expiry; and one sentence stating the report can be deleted after review. A rule's evidence totals SHALL be two, worded as the report page words them: "N times in reviews", the sum of `surfaced.reviewComments`, `evidence.commits`, and `evidence.issues`; and "N times in conventions", the sum of `evidence["agent-files"]`, `evidence.conventions`, `evidence.docs`, and `evidence.tests`. Each SHALL be shown only when above zero, the larger first and reviews first on a tie, with "1 time" for one; a rule with neither shows its title and tier alone. The summary SHALL NOT present a monthly rate. With `--json` it SHALL instead print a JSON object carrying the URL, the expiry, the record's path, and the rendered summary. When the record is written, the delete credential SHALL NOT appear on stdout in either form.
+On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.json` (UTC) holding the report URL, the delete credential exactly as the service returned it, and the expiry. When a record by that name already exists, the CLI SHALL instead write `<YYYY-MM-DD_HHMMSS>_<n>.json`, with the smallest `n` from 2 upward that is free, and SHALL NOT overwrite any existing record. When the record cannot be written at all, the report is live and the record was its only copy of the delete credential, so the CLI SHALL exit non-zero with `REPORT_RECORD_FAILED`, with a message stating that the report is live and giving its URL and its delete credential; with `--json` the error envelope SHALL also carry them as `url` and `deleteUrl`, with the expiry as `expiresAt`. Otherwise it SHALL then print a brief summary rendered from a CLI template: one line per rule giving its title and tier, followed by the rule's evidence counts by kind; when the report carries `findings`, a line stating how many problems the rules found in how many files in the code today; a line stating how many review comments across how many pull requests raised the rules' patterns over the window; the report URL; the expiry; and one sentence stating the report can be deleted after review. A rule's evidence counts SHALL name each kind separately: `"review comment"` / `"review comments"` from `surfaced.reviewComments`, `"fix-up commit"` / `"fix-up commits"` from `evidence.commits`, `"issue"` / `"issues"` from `evidence.issues`, `"agent file"` / `"agent files"` from `evidence["agent-files"]`, `"convention"` / `"conventions"` from `evidence.conventions`, `"doc"` / `"docs"` from `evidence.docs`, and `"test"` / `"tests"` from `evidence.tests`. Each kind SHALL be shown only when above zero, ordered largest count first, with `reviews`-group kinds (`reviews`, `commits`, `issues`) before `conventions`-group kinds (`agent-files`, `conventions`, `docs`, `tests`) on a tie and schema order preserved within each group; a rule with no non-zero evidence counts shows its title and tier alone. The summary SHALL NOT present a monthly rate. With `--json` it SHALL instead print a JSON object carrying the URL, the expiry, the record's path, and the rendered summary. When the record is written, the delete credential SHALL NOT appear on stdout in either form.
 
 #### Scenario: The record is written
 
@@ -261,12 +261,17 @@ On a 201 response the CLI SHALL write `.taskless/reports/<YYYY-MM-DD_HHMMSS>.jso
 #### Scenario: The summary gives each rule its evidence totals
 
 - **WHEN** a publish succeeds and a rule carries `surfaced.reviewComments` of 2, `evidence.commits` of 4, and `evidence.docs` of 1
-- **THEN** that rule's line SHALL state "6 times in reviews, 1 time in conventions"
+- **THEN** that rule's line SHALL state "4 fix-up commits, 2 review comments, 1 doc"
 
 #### Scenario: Conventions lead when they are larger
 
 - **WHEN** a publish succeeds and a rule carries no `surfaced` and `evidence` of `{ "agent-files": 2, "tests": 3 }`
-- **THEN** that rule's line SHALL state "5 times in conventions" and no reviews total
+- **THEN** that rule's line SHALL state "3 tests, 2 agent files" and no review comment count
+
+#### Scenario: Commits-only evidence does not mention reviews
+
+- **WHEN** a publish succeeds and a rule carries no `surfaced` and `evidence` of `{ "commits": 3 }`
+- **THEN** that rule's line SHALL state "3 fix-up commits" and SHALL NOT contain "reviews"
 
 #### Scenario: A rule without evidence shows no totals
 

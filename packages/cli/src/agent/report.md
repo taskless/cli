@@ -85,7 +85,7 @@ later and deletes one on request.
    asking.
 
 4. **Show the result.** On success the CLI prints a short summary: the
-   rules with each one's evidence totals, what they found in the code
+   rules with each one's evidence by kind, what they found in the code
    today, what review raised over the window, the link, and when it
    expires. Relay it to the user as ordinary chat text, NOT inside a
    code block or quote: a fenced block makes the link unclickable and
