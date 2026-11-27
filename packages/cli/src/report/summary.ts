@@ -1,4 +1,4 @@
-import { groupTotals, type SourceGroup } from "./evidence";
+import { sourceCounts, type RuleSource } from "./evidence";
 import type { ReportRule, ReportV1 } from "./types";
 
 /**
@@ -16,9 +16,9 @@ import type { ReportRule, ReportV1 } from "./types";
  * The summary states the two kinds of count it has, labelled apart: what the
  * CLI found in the code today, and what review raised over the window.
  *
- * Each rule also carries its two evidence totals, summed and worded the way
- * the report page sums and words them, so the terminal and the page it links
- * to never disagree about a rule.
+ * Each rule also carries its non-zero evidence counts by kind, larger first
+ * with the `reviews` group first on a tie, matching the counts in the facts
+ * file rather than folding them into group totals.
  */
 
 function tierLabel(rule: ReportRule): string {
@@ -39,19 +39,25 @@ function plural(count: number, one: string, many: string): string {
   return `${String(count)} ${count === 1 ? one : many}`;
 }
 
+const SOURCE_LABELS: Record<RuleSource, readonly [string, string]> = {
+  reviews: ["review comment", "review comments"],
+  commits: ["fix-up commit", "fix-up commits"],
+  issues: ["issue", "issues"],
+  "agent-files": ["agent file", "agent files"],
+  conventions: ["convention", "conventions"],
+  docs: ["doc", "docs"],
+  tests: ["test", "tests"],
+};
+
 /**
- * "6 times in reviews, 1 time in conventions": each group above zero, the
- * larger first, reviews first on a tie. Empty when the rule has neither.
+ * "4 fix-up commits, 2 review comments, 1 doc": each kind above zero,
+ * larger first, reviews group first on a tie. Empty when the rule has none.
  */
 function evidenceSuffix(rule: ReportRule): string {
-  const totals = groupTotals(rule);
-  const order: SourceGroup[] =
-    totals.conventions > totals.reviews
-      ? ["conventions", "reviews"]
-      : ["reviews", "conventions"];
-  const parts = order
-    .filter((group) => totals[group] > 0)
-    .map((group) => `${plural(totals[group], "time", "times")} in ${group}`);
+  const parts = sourceCounts(rule).map(({ source, count }) => {
+    const [one, many] = SOURCE_LABELS[source];
+    return plural(count, one, many);
+  });
   return parts.length === 0 ? "" : `: ${parts.join(", ")}`;
 }
 
